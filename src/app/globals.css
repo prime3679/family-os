@@ -1,26 +1,175 @@
 @import "tailwindcss";
 
+/*
+ * Family OS — Design Tokens
+ *
+ * Philosophy: Home, not office. Warm, not corporate.
+ * The goal is the exhale — peace of mind, not productivity anxiety.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds — warm cream tones */
+  --background: #FFFBF7;
+  --surface: #FFFFFF;
+  --surface-alt: #FBF7F4;
+
+  /* Text — warm charcoal spectrum */
+  --foreground: #2D2A26;
+  --text-primary: #2D2A26;
+  --text-secondary: #6B6560;
+  --text-tertiary: #9C9690;
+
+  /* Accents — earthy, calming */
+  --accent-primary: #7C6A5D;       /* Warm taupe — primary actions */
+  --accent-warm: #C4A484;          /* Soft gold — success, affirmation */
+  --accent-alert: #C17F59;         /* Terracotta — conflicts, attention */
+  --accent-calm: #8B9D83;          /* Sage green — resolved, good */
+
+  /* Borders & Muted */
+  --border: #E8E4E0;
+  --muted: #F5F2EF;
+  --muted-foreground: #9C9690;
+
+  /* Legacy mappings for existing components */
+  --primary: var(--accent-primary);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--surface-alt);
+  --secondary-foreground: var(--text-primary);
+  --ring: var(--accent-primary);
+  --conflict: var(--accent-alert);
+  --conflict-high: #B8614A;
+  --success: var(--accent-calm);
+  --parent-a: #7A9E7E;             /* Sage variation for Parent A */
+  --parent-b: #9B8AA6;             /* Lavender mist for Parent B */
 }
 
 @theme inline {
+  /* Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-warm: var(--accent-warm);
+  --color-accent-alert: var(--accent-alert);
+  --color-accent-calm: var(--accent-calm);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-conflict: var(--conflict);
+  --color-conflict-high: var(--conflict-high);
+  --color-success: var(--success);
+  --color-parent-a: var(--parent-a);
+  --color-parent-b: var(--parent-b);
+
+  /* Typography */
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-playfair);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Base styles */
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* Serif headlines */
+.font-serif {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+/* Generous spacing utility */
+.breathing-room {
+  padding: 2rem;
+}
+
+@media (min-width: 640px) {
+  .breathing-room {
+    padding: 3rem;
+  }
+}
+
+/* Warm card style */
+.warm-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px rgba(45, 42, 38, 0.04);
+}
+
+/* Soft focus states */
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Selection color */
+::selection {
+  background: var(--accent-warm);
+  color: var(--text-primary);
+}
+
+/* Custom scrollbar — subtle and warm */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-alt);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+/* Transitions — smooth and calm */
+.transition-calm {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Animation for gentle entrance */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Staggered animation delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
