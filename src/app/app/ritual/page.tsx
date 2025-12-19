@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import {
   RitualProgress,
@@ -30,15 +30,8 @@ export default function RitualPage() {
     resetWeek,
   } = useRitualState();
 
-  // Local step state, initialized from saved state
-  const [currentStep, setCurrentStep] = useState(1);
-
-  // Sync step from saved state on load
-  useEffect(() => {
-    if (!isLoadingState && savedStep > 1) {
-      setCurrentStep(savedStep);
-    }
-  }, [isLoadingState, savedStep]);
+  // Use saved step directly (default to 1 while loading)
+  const currentStep = isLoadingState ? 1 : (savedStep || 1);
 
   // Compute week data from events
   const currentWeek = useMemo(() => getCurrentWeek(), []);
@@ -46,7 +39,7 @@ export default function RitualPage() {
   const weekSummary = useMemo(() => generateWeekSummary(events, conflicts), [events, conflicts]);
 
   // Fetch AI insights
-  const { insights, isLoading: isLoadingAI, isUsingFallback } = useWeekInsights(
+  const { insights, isLoading: isLoadingAI } = useWeekInsights(
     events,
     conflicts,
     weekSummary
@@ -54,9 +47,7 @@ export default function RitualPage() {
 
   const goToStep = (step: number) => {
     if (step >= 1 && step <= 5) {
-      setCurrentStep(step);
-      persistStep(step); // Save to persistence
-      // Scroll to top smoothly
+      persistStep(step);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -64,8 +55,7 @@ export default function RitualPage() {
   const nextStep = () => goToStep(currentStep + 1);
   const prevStep = () => goToStep(currentStep - 1);
   const startOver = async () => {
-    await resetWeek(); // Clear saved state
-    setCurrentStep(1);
+    await resetWeek();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

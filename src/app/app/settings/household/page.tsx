@@ -26,7 +26,6 @@ interface PendingInvite {
 export default function HouseholdSettingsPage() {
   const { data: session } = useSession();
   const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [householdName, setHouseholdName] = useState<string>('');
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -44,7 +43,6 @@ export default function HouseholdSettingsPage() {
         if (membersRes.ok) {
           const data = await membersRes.json();
           setMembers(data.members || []);
-          setHouseholdName(data.householdName || '');
         }
 
         // Fetch pending invites

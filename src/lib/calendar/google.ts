@@ -1,4 +1,4 @@
-import { google, calendar_v3 } from 'googleapis';
+import { google } from 'googleapis';
 import { prisma } from '../db';
 
 // Types for Google Calendar responses

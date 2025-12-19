@@ -31,9 +31,9 @@ interface AnalyzeRequest {
 export async function POST(request: Request) {
   try {
     // Check authentication - allow demo mode (unauthenticated) for testing
-    const session = await auth();
+    const _session = await auth();
     // In production, uncomment this to require auth:
-    // if (!session?.user?.id) {
+    // if (!_session?.user?.id) {
     //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // }
 
