@@ -51,9 +51,11 @@ export async function GET() {
     }
 
     // Combine user info with family member info
-    const members = user.household.users.map((householdUser) => {
-      const familyMember = user.household!.members.find(
-        (m) => m.userId === householdUser.id
+    const householdUsers = user.household.users;
+    const householdMembers = user.household.members;
+    const members = householdUsers.map((householdUser: typeof householdUsers[number]) => {
+      const familyMember = householdMembers.find(
+        (m: typeof householdMembers[number]) => m.userId === householdUser.id
       );
 
       return {
