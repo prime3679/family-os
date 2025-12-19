@@ -1,19 +1,111 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Event } from '@/data/mock-data';
-import { Card, Button } from '@/components/shared';
+import { Card, Button, Checkbox } from '@/components/shared';
 import { useCalendarEvents } from '@/hooks/useCalendarEvents';
+import { useRitualState } from '@/hooks/useRitualState';
+import { useWeekInsights } from '@/hooks/useWeekInsights';
 import { getCurrentWeek, detectConflicts, generateWeekSummary } from '@/lib/calendar/analyzeWeek';
+
+// Generate fallback prep items based on event type (shared with StepPrep)
+function generateFallbackPrepItems(event: Event): string[] {
+  const fallbacks: Record<string, string[]> = {
+    travel: [
+      'Pack bag the night before',
+      'Confirm reservations',
+      'Share itinerary with partner',
+      'Arrange transportation',
+    ],
+    kids: [
+      'Pack snacks for the wait',
+      'Confirm appointment time',
+      'Prepare any needed documents',
+      'Plan activity for waiting time',
+    ],
+    personal: [
+      'Confirm babysitter if needed',
+      'Block time on shared calendar',
+      'Prepare what you need',
+    ],
+    family: [
+      'Coordinate schedules with partner',
+      'Prepare any supplies needed',
+      'Confirm timing with everyone',
+    ],
+    work: [
+      'Prepare materials in advance',
+      'Block focus time if needed',
+      'Coordinate coverage with partner',
+    ],
+  };
+  return fallbacks[event.type || 'family'] || fallbacks.family;
+}
+
+interface PrepStatus {
+  total: number;
+  completed: number;
+  items: { id: string; text: string; done: boolean }[];
+}
 
 export default function WeekPage() {
   const { events, isLoading, isUsingMockData } = useCalendarEvents();
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
   // Compute week data from events
   const currentWeek = useMemo(() => getCurrentWeek(), []);
   const conflicts = useMemo(() => detectConflicts(events), [events]);
   const weekSummary = useMemo(() => generateWeekSummary(events, conflicts), [events, conflicts]);
+
+  // Ritual state for prep items
+  const { prepItems, setPrepItemDone } = useRitualState();
+
+  // AI insights for prep suggestions
+  const { insights } = useWeekInsights(events, conflicts, weekSummary);
+
+  // Calculate prep status for an event
+  const getEventPrepStatus = useMemo(() => {
+    return (event: Event): PrepStatus | null => {
+      if (!event.needsPrep) return null;
+
+      // Get AI suggestions or fallback
+      const aiItems = insights?.prepSuggestions?.[event.title] || [];
+      const items = aiItems.length > 0 ? aiItems : generateFallbackPrepItems(event);
+
+      const prepItemList = items.map((text, idx) => {
+        const itemKey = `${event.id}-${idx}`;
+        return {
+          id: itemKey,
+          text,
+          done: prepItems[itemKey] ?? false,
+        };
+      });
+
+      return {
+        total: prepItemList.length,
+        completed: prepItemList.filter(i => i.done).length,
+        items: prepItemList,
+      };
+    };
+  }, [insights, prepItems]);
+
+  // Calculate overall prep stats
+  const prepStats = useMemo(() => {
+    const eventsNeedingPrep = events.filter(e => e.needsPrep);
+    let total = 0;
+    let completed = 0;
+
+    eventsNeedingPrep.forEach(event => {
+      const status = getEventPrepStatus(event);
+      if (status) {
+        total += status.total;
+        completed += status.completed;
+      }
+    });
+
+    return { total, completed, eventsWithPrep: eventsNeedingPrep.length };
+  }, [events, getEventPrepStatus]);
 
   // Get unique owners for legend
   const owners = useMemo(() => {
@@ -102,10 +194,15 @@ export default function WeekPage() {
               <span className="text-text-tertiary">Conflicts:</span>
               <span className="ml-2 font-medium text-accent-alert">{conflicts.length}</span>
             </div>
-            <div>
-              <span className="text-text-tertiary">Busiest:</span>
-              <span className="ml-2 font-medium text-text-primary">{weekSummary.heaviestDay}</span>
-            </div>
+            {prepStats.eventsWithPrep > 0 && (
+              <div>
+                <span className="text-text-tertiary">Prep:</span>
+                <span className={`ml-2 font-medium ${prepStats.completed === prepStats.total ? 'text-accent-calm' : 'text-text-primary'}`}>
+                  {prepStats.completed}/{prepStats.total}
+                  {prepStats.completed === prepStats.total && ' ✓'}
+                </span>
+              </div>
+            )}
             <div>
               <span className="text-text-tertiary">Intensity:</span>
               <span className="ml-2 font-medium text-text-primary capitalize">{weekSummary.intensity}</span>
@@ -133,7 +230,7 @@ export default function WeekPage() {
       {/* Week grid */}
       <div className="grid grid-cols-7 gap-3">
         {currentWeek.days.map(day => {
-          const events = getEventsForDay(day.short);
+          const dayEvents = getEventsForDay(day.short);
           const hasConflicts = dayHasConflicts(day.short);
 
           return (
@@ -157,11 +254,16 @@ export default function WeekPage() {
 
               {/* Events */}
               <div className="p-2 space-y-2 bg-surface rounded-b-xl border border-t-0 border-border min-h-[150px]">
-                {events.length === 0 ? (
+                {dayEvents.length === 0 ? (
                   <p className="text-xs text-text-tertiary text-center py-4">No events</p>
                 ) : (
-                  events.map(event => (
-                    <EventPill key={event.id} event={event} />
+                  dayEvents.map(event => (
+                    <EventPill
+                      key={event.id}
+                      event={event}
+                      prepStatus={getEventPrepStatus(event)}
+                      onClick={event.needsPrep ? () => setSelectedEvent(event) : undefined}
+                    />
                   ))
                 )}
               </div>
@@ -185,11 +287,122 @@ export default function WeekPage() {
           </div>
         </div>
       )}
+
+      {/* Prep Detail Modal */}
+      {selectedEvent && (
+        <PrepDetailModal
+          event={selectedEvent}
+          prepStatus={getEventPrepStatus(selectedEvent)}
+          onClose={() => setSelectedEvent(null)}
+          onToggle={setPrepItemDone}
+        />
+      )}
     </div>
   );
 }
 
-function EventPill({ event }: { event: Event }) {
+// Map short day codes to full names
+function capitalizeDay(day: string): string {
+  const dayMap: Record<string, string> = {
+    mon: 'Monday',
+    tue: 'Tuesday',
+    wed: 'Wednesday',
+    thu: 'Thursday',
+    fri: 'Friday',
+    sat: 'Saturday',
+    sun: 'Sunday',
+  };
+  return dayMap[day] || day;
+}
+
+interface PrepDetailModalProps {
+  event: Event;
+  prepStatus: PrepStatus | null;
+  onClose: () => void;
+  onToggle: (itemKey: string, done: boolean) => void;
+}
+
+function PrepDetailModal({ event, prepStatus, onClose, onToggle }: PrepDetailModalProps) {
+  if (!prepStatus) return null;
+
+  const progress = (prepStatus.completed / prepStatus.total) * 100;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative bg-surface rounded-2xl shadow-xl max-w-md w-full max-h-[80vh] overflow-hidden animate-fade-in-up">
+        {/* Header */}
+        <div className="sticky top-0 bg-surface border-b border-border px-6 py-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="font-serif text-lg text-text-primary">{event.title}</h3>
+              <p className="text-sm text-text-tertiary">
+                {capitalizeDay(event.day)} {event.time}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-surface-alt transition-colors"
+            >
+              <svg className="h-5 w-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-text-primary">Prep progress</span>
+              <span className="text-sm text-text-tertiary">
+                {prepStatus.completed} of {prepStatus.total} done
+              </span>
+            </div>
+            <div className="h-2 bg-border rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent-calm rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Prep items */}
+        <div className="p-6 space-y-3 overflow-auto max-h-[50vh]">
+          {prepStatus.items.map(item => (
+            <Checkbox
+              key={item.id}
+              label={item.text}
+              checked={item.done}
+              onCheckedChange={(done) => onToggle(item.id, done)}
+            />
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-surface border-t border-border px-6 py-4">
+          <Button onClick={onClose} variant="primary" className="w-full">
+            Done
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface EventPillProps {
+  event: Event;
+  prepStatus: PrepStatus | null;
+  onClick?: () => void;
+}
+
+function EventPill({ event, prepStatus, onClick }: EventPillProps) {
   const parentColors = {
     A: 'bg-parent-a/20 border-parent-a/40',
     B: 'bg-parent-b/20 border-parent-b/40',
@@ -209,11 +422,17 @@ function EventPill({ event }: { event: Event }) {
     ? '2'
     : event.parent;
 
+  const isClickable = prepStatus !== null;
+  const isComplete = prepStatus && prepStatus.completed === prepStatus.total;
+
   return (
     <div
+      onClick={onClick}
       className={`
         rounded-lg border p-2 text-xs
         ${parentColors[event.parent]}
+        ${isClickable ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}
+        ${isComplete ? 'ring-1 ring-accent-calm/50' : ''}
       `}
     >
       <div className="flex items-start gap-1.5">
@@ -224,7 +443,18 @@ function EventPill({ event }: { event: Event }) {
         </span>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-text-primary truncate">{event.title}</div>
-          <div className="text-text-tertiary">{event.time}</div>
+          <div className="flex items-center justify-between">
+            <span className="text-text-tertiary">{event.time}</span>
+            {prepStatus && (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                isComplete
+                  ? 'bg-accent-calm/20 text-accent-calm'
+                  : 'bg-accent-warm/20 text-accent-warm'
+              }`}>
+                {isComplete ? '✓' : `${prepStatus.completed}/${prepStatus.total}`}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
