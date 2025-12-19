@@ -131,7 +131,7 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      invites: invites.map((inv) => ({
+      invites: invites.map((inv: typeof invites[number]) => ({
         id: inv.id,
         email: inv.email,
         status: inv.status,
