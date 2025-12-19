@@ -17,6 +17,7 @@ export type Event = {
   day: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
   period: 'morning' | 'afternoon' | 'evening';
   parent: 'A' | 'B' | 'both';
+  ownerName?: string; // Display name of the parent who owns this event
   calendar: string;
   type?: 'work' | 'kids' | 'personal' | 'family' | 'travel';
   needsPrep?: boolean;

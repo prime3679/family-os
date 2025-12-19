@@ -67,6 +67,7 @@ export async function GET() {
             calendarId: calendar.id,
             calendarName: calendar.name,
             parentRole: member.role as 'parent_a' | 'parent_b',
+            ownerName: member.displayName,
           });
 
           allEvents.push(...mappedEvents);

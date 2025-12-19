@@ -143,6 +143,7 @@ interface MapEventOptions {
   calendarId: string;
   calendarName: string;
   parentRole: 'parent_a' | 'parent_b';
+  ownerName: string;
 }
 
 /**
@@ -182,6 +183,7 @@ export function mapGoogleEvent(
     day: getDayKey(startDate),
     period: getPeriod(startDate),
     parent,
+    ownerName: options.ownerName,
     calendar: options.calendarName,
     type: inferEventType(googleEvent),
     needsPrep: inferNeedsPrep(googleEvent),

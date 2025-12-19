@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import Header from './Header';
+import SetupBanner from './SetupBanner';
 
 interface AppShellProps {
   children: ReactNode;
@@ -7,6 +8,8 @@ interface AppShellProps {
   showNav?: boolean;
   maxWidth?: 'narrow' | 'default' | 'wide' | 'full';
   centered?: boolean;
+  needsCalendarSetup?: boolean;
+  isNewMember?: boolean;
 }
 
 const maxWidthStyles = {
@@ -22,10 +25,15 @@ export default function AppShell({
   showNav = true,
   maxWidth = 'default',
   centered = false,
+  needsCalendarSetup = false,
+  isNewMember = false,
 }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background">
       <Header familyName={familyName} showNav={showNav} />
+      {needsCalendarSetup && (
+        <SetupBanner familyName={familyName} isNewMember={isNewMember} />
+      )}
       <main
         className={`
           ${maxWidthStyles[maxWidth]}

@@ -15,6 +15,17 @@ export default function WeekPage() {
   const conflicts = useMemo(() => detectConflicts(events), [events]);
   const weekSummary = useMemo(() => generateWeekSummary(events, conflicts), [events, conflicts]);
 
+  // Get unique owners for legend
+  const owners = useMemo(() => {
+    const ownerMap = new Map<string, { name: string; parent: 'A' | 'B' }>();
+    events.forEach((event) => {
+      if (event.ownerName && event.parent !== 'both') {
+        ownerMap.set(event.parent, { name: event.ownerName, parent: event.parent });
+      }
+    });
+    return Array.from(ownerMap.values());
+  }, [events]);
+
   const dayMap: Record<string, Event['day']> = {
     Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat', Sun: 'sun',
   };
@@ -81,23 +92,41 @@ export default function WeekPage() {
 
       {/* Week summary bar */}
       <Card className="mb-8" variant="subtle">
-        <div className="flex flex-wrap items-center gap-6 text-sm">
-          <div>
-            <span className="text-text-tertiary">Events:</span>
-            <span className="ml-2 font-medium text-text-primary">{weekSummary.totalEvents}</span>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-6 text-sm">
+            <div>
+              <span className="text-text-tertiary">Events:</span>
+              <span className="ml-2 font-medium text-text-primary">{weekSummary.totalEvents}</span>
+            </div>
+            <div>
+              <span className="text-text-tertiary">Conflicts:</span>
+              <span className="ml-2 font-medium text-accent-alert">{conflicts.length}</span>
+            </div>
+            <div>
+              <span className="text-text-tertiary">Busiest:</span>
+              <span className="ml-2 font-medium text-text-primary">{weekSummary.heaviestDay}</span>
+            </div>
+            <div>
+              <span className="text-text-tertiary">Intensity:</span>
+              <span className="ml-2 font-medium text-text-primary capitalize">{weekSummary.intensity}</span>
+            </div>
           </div>
-          <div>
-            <span className="text-text-tertiary">Conflicts:</span>
-            <span className="ml-2 font-medium text-accent-alert">{conflicts.length}</span>
-          </div>
-          <div>
-            <span className="text-text-tertiary">Busiest:</span>
-            <span className="ml-2 font-medium text-text-primary">{weekSummary.heaviestDay}</span>
-          </div>
-          <div>
-            <span className="text-text-tertiary">Intensity:</span>
-            <span className="ml-2 font-medium text-text-primary capitalize">{weekSummary.intensity}</span>
-          </div>
+
+          {/* Owner legend */}
+          {owners.length > 0 && (
+            <div className="flex items-center gap-4 text-sm">
+              {owners.map((owner) => (
+                <div key={owner.parent} className="flex items-center gap-1.5">
+                  <span
+                    className={`h-3 w-3 rounded-full ${
+                      owner.parent === 'A' ? 'bg-parent-a' : 'bg-parent-b'
+                    }`}
+                  />
+                  <span className="text-text-secondary">{owner.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
 
@@ -167,6 +196,19 @@ function EventPill({ event }: { event: Event }) {
     both: 'bg-accent-calm/20 border-accent-calm/40',
   };
 
+  const parentDotColors = {
+    A: 'bg-parent-a',
+    B: 'bg-parent-b',
+    both: 'bg-accent-calm',
+  };
+
+  // Get first initial of owner name, or fallback to parent letter
+  const ownerInitial = event.ownerName
+    ? event.ownerName.charAt(0).toUpperCase()
+    : event.parent === 'both'
+    ? '2'
+    : event.parent;
+
   return (
     <div
       className={`
@@ -174,8 +216,17 @@ function EventPill({ event }: { event: Event }) {
         ${parentColors[event.parent]}
       `}
     >
-      <div className="font-medium text-text-primary truncate">{event.title}</div>
-      <div className="text-text-tertiary">{event.time}</div>
+      <div className="flex items-start gap-1.5">
+        <span
+          className={`flex-shrink-0 h-4 w-4 rounded-full ${parentDotColors[event.parent]} text-white text-[10px] font-bold flex items-center justify-center`}
+        >
+          {ownerInitial}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-text-primary truncate">{event.title}</div>
+          <div className="text-text-tertiary">{event.time}</div>
+        </div>
+      </div>
     </div>
   );
 }

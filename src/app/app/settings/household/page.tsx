@@ -6,9 +6,13 @@ import { Card, Button } from '@/components/shared';
 
 interface HouseholdMember {
   id: string;
-  name: string;
-  email: string;
-  role: string;
+  name: string | null;
+  email: string | null;
+  image: string | null;
+  displayName: string | null;
+  role: string | null;
+  hasConnectedCalendars: boolean;
+  isCurrentUser: boolean;
 }
 
 interface PendingInvite {
@@ -22,6 +26,7 @@ interface PendingInvite {
 export default function HouseholdSettingsPage() {
   const { data: session } = useSession();
   const [members, setMembers] = useState<HouseholdMember[]>([]);
+  const [householdName, setHouseholdName] = useState<string>('');
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -34,6 +39,14 @@ export default function HouseholdSettingsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Fetch members
+        const membersRes = await fetch('/api/household/members');
+        if (membersRes.ok) {
+          const data = await membersRes.json();
+          setMembers(data.members || []);
+          setHouseholdName(data.householdName || '');
+        }
+
         // Fetch pending invites
         const inviteRes = await fetch('/api/household/invite');
         if (inviteRes.ok) {
@@ -238,24 +251,68 @@ export default function HouseholdSettingsPage() {
             </section>
           )}
 
-          {/* Current user info */}
+          {/* Household Members */}
           <section>
             <h2 className="text-sm font-semibold text-text-primary mb-4">
-              Your Account
+              Household Members
             </h2>
-            <Card>
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-parent-a to-parent-b text-white font-medium">
-                  {session?.user?.name?.charAt(0) || 'U'}
-                </div>
-                <div>
-                  <p className="font-medium text-text-primary">
-                    {session?.user?.name || 'User'}
-                  </p>
-                  <p className="text-sm text-text-tertiary">
-                    {session?.user?.email}
-                  </p>
-                </div>
+            <Card padding="none">
+              <div className="divide-y divide-border">
+                {members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-4"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-full text-white font-medium ${
+                          member.role === 'parent_a'
+                            ? 'bg-parent-a'
+                            : member.role === 'parent_b'
+                            ? 'bg-parent-b'
+                            : 'bg-gradient-to-br from-parent-a to-parent-b'
+                        }`}
+                      >
+                        {(member.displayName || member.name || 'U').charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-text-primary">
+                            {member.displayName || member.name || 'User'}
+                          </p>
+                          {member.isCurrentUser && (
+                            <span className="text-xs text-text-tertiary">(you)</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-text-tertiary">
+                          {member.email}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {member.role && (
+                        <span className="text-xs text-text-tertiary capitalize">
+                          {member.role.replace('_', ' ')}
+                        </span>
+                      )}
+                      {member.hasConnectedCalendars ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-accent-calm/10 px-2 py-0.5 text-xs font-medium text-accent-calm">
+                          <span className="h-1.5 w-1.5 rounded-full bg-accent-calm" />
+                          Connected
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-text-tertiary/10 px-2 py-0.5 text-xs font-medium text-text-tertiary">
+                          No calendar
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {members.length === 0 && (
+                  <div className="p-4 text-center text-text-tertiary text-sm">
+                    No members yet
+                  </div>
+                )}
               </div>
             </Card>
           </section>
