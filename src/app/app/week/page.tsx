@@ -1,23 +1,52 @@
 'use client';
 
+import { useMemo } from 'react';
 import Link from 'next/link';
-import { mockEvents, mockConflicts, currentWeek, mockWeekSummary, Event } from '@/data/mock-data';
+import { Event } from '@/data/mock-data';
 import { Card, Button } from '@/components/shared';
+import { useCalendarEvents } from '@/hooks/useCalendarEvents';
+import { getCurrentWeek, detectConflicts, generateWeekSummary } from '@/lib/calendar/analyzeWeek';
 
 export default function WeekPage() {
+  const { events, isLoading, isUsingMockData } = useCalendarEvents();
+
+  // Compute week data from events
+  const currentWeek = useMemo(() => getCurrentWeek(), []);
+  const conflicts = useMemo(() => detectConflicts(events), [events]);
+  const weekSummary = useMemo(() => generateWeekSummary(events, conflicts), [events, conflicts]);
+
   const dayMap: Record<string, Event['day']> = {
     Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat', Sun: 'sun',
   };
 
   const getEventsForDay = (dayShort: string) => {
     const day = dayMap[dayShort];
-    return mockEvents.filter(e => e.day === day);
+    return events.filter(e => e.day === day);
   };
 
   const dayHasConflicts = (dayShort: string) => {
     const day = dayMap[dayShort];
-    return day === 'tue' || day === 'thu';
+    // Check if any conflict mentions this day
+    const dayName = {
+      mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday',
+      fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
+    }[day];
+    return conflicts.some(c => c.day === dayName);
   };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="max-w-5xl mx-auto py-8">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <div className="h-8 w-8 border-2 border-accent-warm border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-text-secondary">Loading your week...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto py-8">
@@ -37,24 +66,37 @@ export default function WeekPage() {
         </Link>
       </div>
 
+      {/* Mock data banner */}
+      {isUsingMockData && (
+        <div className="mb-6 rounded-lg bg-accent-warm/10 border border-accent-warm/30 p-4 text-center">
+          <p className="text-sm text-text-secondary">
+            <span className="font-medium">Demo mode:</span> Showing sample data.{' '}
+            <Link href="/app/settings/calendars" className="text-accent-primary hover:underline">
+              Connect your calendar
+            </Link>{' '}
+            to see real events.
+          </p>
+        </div>
+      )}
+
       {/* Week summary bar */}
       <Card className="mb-8" variant="subtle">
         <div className="flex flex-wrap items-center gap-6 text-sm">
           <div>
             <span className="text-text-tertiary">Events:</span>
-            <span className="ml-2 font-medium text-text-primary">{mockWeekSummary.totalEvents}</span>
+            <span className="ml-2 font-medium text-text-primary">{weekSummary.totalEvents}</span>
           </div>
           <div>
             <span className="text-text-tertiary">Conflicts:</span>
-            <span className="ml-2 font-medium text-accent-alert">{mockConflicts.length}</span>
+            <span className="ml-2 font-medium text-accent-alert">{conflicts.length}</span>
           </div>
           <div>
             <span className="text-text-tertiary">Busiest:</span>
-            <span className="ml-2 font-medium text-text-primary">{mockWeekSummary.heaviestDay}</span>
+            <span className="ml-2 font-medium text-text-primary">{weekSummary.heaviestDay}</span>
           </div>
           <div>
             <span className="text-text-tertiary">Intensity:</span>
-            <span className="ml-2 font-medium text-text-primary capitalize">{mockWeekSummary.intensity}</span>
+            <span className="ml-2 font-medium text-text-primary capitalize">{weekSummary.intensity}</span>
           </div>
         </div>
       </Card>
@@ -100,11 +142,11 @@ export default function WeekPage() {
       </div>
 
       {/* Conflicts summary */}
-      {mockConflicts.length > 0 && (
+      {conflicts.length > 0 && (
         <div className="mt-8">
           <h2 className="font-serif text-lg text-text-primary mb-4">Active conflicts</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {mockConflicts.map(conflict => (
+            {conflicts.map(conflict => (
               <Card key={conflict.id} className="border-l-4 border-accent-alert/50">
                 <div className="text-sm font-medium text-text-primary">{conflict.day}</div>
                 <div className="text-xs text-text-tertiary mb-2">{conflict.timeRange}</div>

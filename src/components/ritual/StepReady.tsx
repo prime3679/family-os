@@ -1,15 +1,25 @@
 'use client';
 
 import Link from 'next/link';
-import { weekAffirmation, mockWeekSummary } from '@/data/mock-data';
+import { weekAffirmation } from '@/data/mock-data';
+import { WeekSummary } from '@/data/mock-data';
 import { Card, Button } from '@/components/shared';
 
 interface StepReadyProps {
   onBack: () => void;
   onStartOver: () => void;
+  weekSummary: WeekSummary;
+  aiAffirmation?: {
+    headline: string;
+    message: string;
+  };
 }
 
-export default function StepReady({ onBack, onStartOver }: StepReadyProps) {
+export default function StepReady({ onBack, onStartOver, weekSummary, aiAffirmation }: StepReadyProps) {
+  // Prefer AI-generated affirmation when available
+  const headline = aiAffirmation?.headline || weekAffirmation.headline;
+  const message = aiAffirmation?.message || weekAffirmation.subtext;
+
   return (
     <div className="space-y-8 animate-fade-in-up">
       {/* Main affirmation */}
@@ -20,10 +30,10 @@ export default function StepReady({ onBack, onStartOver }: StepReadyProps) {
           </svg>
         </div>
         <h2 className="font-serif text-3xl sm:text-4xl text-text-primary mb-4">
-          {weekAffirmation.headline}
+          {headline}
         </h2>
         <p className="text-lg text-text-secondary max-w-lg mx-auto">
-          {weekAffirmation.subtext}
+          {message}
         </p>
       </div>
 
@@ -47,19 +57,19 @@ export default function StepReady({ onBack, onStartOver }: StepReadyProps) {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <span className="text-text-tertiary">Heaviest day:</span>
-            <span className="ml-2 text-text-primary font-medium">{mockWeekSummary.heaviestDay}</span>
+            <span className="ml-2 text-text-primary font-medium">{weekSummary.heaviestDay}</span>
           </div>
           <div>
             <span className="text-text-tertiary">Lightest day:</span>
-            <span className="ml-2 text-text-primary font-medium">{mockWeekSummary.lightestDay}</span>
+            <span className="ml-2 text-text-primary font-medium">{weekSummary.lightestDay}</span>
           </div>
           <div>
             <span className="text-text-tertiary">Travel:</span>
-            <span className="ml-2 text-text-primary font-medium">{mockWeekSummary.travelDays} day{mockWeekSummary.travelDays !== 1 ? 's' : ''}</span>
+            <span className="ml-2 text-text-primary font-medium">{weekSummary.travelDays} day{weekSummary.travelDays !== 1 ? 's' : ''}</span>
           </div>
           <div>
             <span className="text-text-tertiary">Solo parenting:</span>
-            <span className="ml-2 text-text-primary font-medium">{mockWeekSummary.soloParentingDays} day{mockWeekSummary.soloParentingDays !== 1 ? 's' : ''}</span>
+            <span className="ml-2 text-text-primary font-medium">{weekSummary.soloParentingDays} day{weekSummary.soloParentingDays !== 1 ? 's' : ''}</span>
           </div>
         </div>
       </Card>

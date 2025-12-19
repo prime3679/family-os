@@ -1,30 +1,103 @@
 'use client';
 
-import { useState } from 'react';
-import { mockPrepItems, PrepItem } from '@/data/mock-data';
+import { useMemo } from 'react';
+import { Event, PrepItem } from '@/data/mock-data';
 import { Card, Button, Checkbox } from '@/components/shared';
 
 interface StepPrepProps {
   onNext: () => void;
   onBack: () => void;
+  events: Event[];
+  aiPrepSuggestions?: Record<string, string[]>;
+  // Persistence
+  savedPrepItems?: Record<string, boolean>;
+  onPrepItemToggle?: (itemKey: string, done: boolean) => void;
 }
 
-export default function StepPrep({ onNext, onBack }: StepPrepProps) {
-  const [prepItems, setPrepItems] = useState(mockPrepItems);
+// Map short day codes to full names
+function capitalizeDay(day: string): string {
+  const dayMap: Record<string, string> = {
+    mon: 'Monday',
+    tue: 'Tuesday',
+    wed: 'Wednesday',
+    thu: 'Thursday',
+    fri: 'Friday',
+    sat: 'Saturday',
+    sun: 'Sunday',
+  };
+  return dayMap[day] || day;
+}
+
+// Generate fallback prep items based on event type
+function generateFallbackPrepItems(event: Event): string[] {
+  const fallbacks: Record<string, string[]> = {
+    travel: [
+      'Pack bag the night before',
+      'Confirm reservations',
+      'Share itinerary with partner',
+      'Arrange transportation',
+    ],
+    kids: [
+      'Pack snacks for the wait',
+      'Confirm appointment time',
+      'Prepare any needed documents',
+      'Plan activity for waiting time',
+    ],
+    personal: [
+      'Confirm babysitter if needed',
+      'Block time on shared calendar',
+      'Prepare what you need',
+    ],
+    family: [
+      'Coordinate schedules with partner',
+      'Prepare any supplies needed',
+      'Confirm timing with everyone',
+    ],
+    work: [
+      'Prepare materials in advance',
+      'Block focus time if needed',
+      'Coordinate coverage with partner',
+    ],
+  };
+  return fallbacks[event.type || 'family'] || fallbacks.family;
+}
+
+export default function StepPrep({
+  onNext,
+  onBack,
+  events,
+  aiPrepSuggestions,
+  savedPrepItems = {},
+  onPrepItemToggle,
+}: StepPrepProps) {
+  // Build prep items from events that need prep + AI suggestions + saved state
+  const prepItems = useMemo(() => {
+    const eventsNeedingPrep = events.filter((e) => e.needsPrep);
+
+    return eventsNeedingPrep.map((event) => {
+      // Get AI suggestions or use fallback
+      const aiItems = aiPrepSuggestions?.[event.title] || [];
+      const items = aiItems.length > 0 ? aiItems : generateFallbackPrepItems(event);
+
+      return {
+        id: `prep-${event.id}`,
+        eventTitle: event.title,
+        eventTime: `${capitalizeDay(event.day)} ${event.time}`,
+        items: items.map((text, idx) => {
+          const itemKey = `${event.id}-${idx}`;
+          return {
+            id: itemKey,
+            text,
+            done: savedPrepItems[itemKey] ?? false,
+          };
+        }),
+      };
+    });
+  }, [events, aiPrepSuggestions, savedPrepItems]);
 
   const toggleItem = (prepId: string, itemId: string) => {
-    setPrepItems(items =>
-      items.map(prep =>
-        prep.id === prepId
-          ? {
-              ...prep,
-              items: prep.items.map(item =>
-                item.id === itemId ? { ...item, done: !item.done } : item
-              ),
-            }
-          : prep
-      )
-    );
+    const currentDone = savedPrepItems[itemId] ?? false;
+    onPrepItemToggle?.(itemId, !currentDone);
   };
 
   const totalItems = prepItems.reduce((acc, prep) => acc + prep.items.length, 0);
@@ -39,23 +112,38 @@ export default function StepPrep({ onNext, onBack }: StepPrepProps) {
       {/* Summary */}
       <div className="text-center">
         <p className="text-text-secondary">
-          {prepItems.length} events need prep work this week.
+          {prepItems.length > 0
+            ? `${prepItems.length} event${prepItems.length > 1 ? 's' : ''} need prep work this week.`
+            : 'No events need special prep this week.'}
         </p>
       </div>
 
-      {/* Progress bar */}
-      <div className="bg-surface-alt rounded-xl p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-text-primary">Overall prep progress</span>
-          <span className="text-sm text-text-tertiary">{completedItems} of {totalItems} done</span>
+      {/* Empty state */}
+      {prepItems.length === 0 && (
+        <div className="text-center py-8 bg-accent-calm/10 rounded-xl">
+          <div className="text-2xl mb-2">✨</div>
+          <p className="text-accent-calm font-medium">You&apos;re all set!</p>
+          <p className="text-sm text-text-secondary mt-1">
+            Nothing needs special preparation this week.
+          </p>
         </div>
-        <div className="h-2 bg-border rounded-full overflow-hidden">
-          <div
-            className="h-full bg-accent-calm rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
+      )}
+
+      {/* Progress bar - only show when there are items */}
+      {prepItems.length > 0 && (
+        <div className="bg-surface-alt rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-text-primary">Overall prep progress</span>
+            <span className="text-sm text-text-tertiary">{completedItems} of {totalItems} done</span>
+          </div>
+          <div className="h-2 bg-border rounded-full overflow-hidden">
+            <div
+              className="h-full bg-accent-calm rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Prep lists */}
       <div className="space-y-4">

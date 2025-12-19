@@ -1,19 +1,38 @@
 'use client';
 
-import { mockWeekSummary, mockEvents, currentWeek } from '@/data/mock-data';
+import { Event, WeekSummary } from '@/data/mock-data';
 import { Card, Button } from '@/components/shared';
+
+interface WeekDay {
+  key: Event['day'];
+  short: string;
+  date: string;
+  full: string;
+}
 
 interface StepOverviewProps {
   onNext: () => void;
+  events: Event[];
+  weekSummary: WeekSummary;
+  currentWeek: {
+    label: string;
+    range: string;
+    year: number;
+    days: WeekDay[];
+  };
+  aiNarrative?: string;
 }
 
-export default function StepOverview({ onNext }: StepOverviewProps) {
-  const { totalEvents, handoffs, travelDays, soloParentingDays, intensity, heaviestDay, narrative } = mockWeekSummary;
+export default function StepOverview({ onNext, events, weekSummary, currentWeek, aiNarrative }: StepOverviewProps) {
+  const { totalEvents, handoffs, travelDays, soloParentingDays, intensity, heaviestDay, narrative } = weekSummary;
+
+  // Prefer AI-generated narrative when available
+  const displayNarrative = aiNarrative || narrative;
 
   // Calculate events per day for visualization
   const eventsByDay = currentWeek.days.map(day => ({
     ...day,
-    count: mockEvents.filter(e => e.day === day.key).length,
+    count: events.filter(e => e.day === day.key).length,
   }));
 
   const maxEvents = Math.max(...eventsByDay.map(d => d.count));
@@ -79,7 +98,7 @@ export default function StepOverview({ onNext }: StepOverviewProps) {
       {/* Narrative summary */}
       <Card>
         <p className="text-text-secondary leading-relaxed whitespace-pre-line">
-          {narrative}
+          {displayNarrative}
         </p>
       </Card>
 

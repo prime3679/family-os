@@ -1,0 +1,156 @@
+// Prisma schema for Family OS
+// NextAuth.js compatible + Calendar integration
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// NextAuth.js required models
+model User {
+  id             String          @id @default(cuid())
+  name           String?
+  email          String          @unique
+  emailVerified  DateTime?
+  image          String?
+  householdId    String?
+  accounts       Account[]
+  sessions       Session[]
+  household      Household?      @relation(fields: [householdId], references: [id])
+  familyMember   FamilyMember?
+  ritualSessions RitualSession[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Family OS specific models
+model Household {
+  id        String            @id @default(cuid())
+  name      String            @default("Our Family")
+  members   FamilyMember[]
+  users     User[]
+  invites   HouseholdInvite[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model HouseholdInvite {
+  id          String    @id @default(cuid())
+  householdId String
+  email       String
+  token       String    @unique @default(cuid())
+  status      String    @default("pending") // pending | accepted | expired
+  invitedBy   String    // userId who sent invite
+  expiresAt   DateTime
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([householdId, email])
+}
+
+model FamilyMember {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  householdId String
+  role        String    // "parent_a" | "parent_b"
+  displayName String
+  color       String    @default("#7C6A5D")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  calendars   ConnectedCalendar[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ConnectedCalendar {
+  id               String       @id @default(cuid())
+  familyMemberId   String
+  googleCalendarId String
+  name             String
+  color            String
+  included         Boolean      @default(true)
+  lastSyncedAt     DateTime?
+  familyMember     FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([familyMemberId, googleCalendarId])
+}
+
+// Ritual state persistence
+model RitualSession {
+  id          String          @id @default(cuid())
+  userId      String
+  weekKey     String          // "2024-W50" (ISO week format)
+  currentStep Int             @default(1)
+  completedAt DateTime?
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prepItems   PrepItemState[]
+  decisions   DecisionState[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([userId, weekKey])
+}
+
+model PrepItemState {
+  id              String        @id @default(cuid())
+  ritualSessionId String
+  itemKey         String        // "event123-0" or "prep-5-1"
+  done            Boolean       @default(false)
+  ritualSession   RitualSession @relation(fields: [ritualSessionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([ritualSessionId, itemKey])
+}
+
+model DecisionState {
+  id              String        @id @default(cuid())
+  ritualSessionId String
+  conflictId      String        // e.g., "conflict-5-6"
+  resolution      String?       // The selected option text
+  resolved        Boolean       @default(false)
+  ritualSession   RitualSession @relation(fields: [ritualSessionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([ritualSessionId, conflictId])
+}

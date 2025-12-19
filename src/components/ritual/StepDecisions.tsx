@@ -1,31 +1,93 @@
 'use client';
 
-import { useState } from 'react';
-import { mockDecisions, Decision } from '@/data/mock-data';
+import { useMemo } from 'react';
+import { Conflict, Decision } from '@/data/mock-data';
 import { Card, Button } from '@/components/shared';
+
+interface DecisionSavedState {
+  resolved: boolean;
+  resolution?: string;
+}
 
 interface StepDecisionsProps {
   onNext: () => void;
   onBack: () => void;
+  conflicts: Conflict[];
+  aiDecisionOptions?: Record<string, string[]>;
+  // Persistence
+  savedDecisions?: Record<string, DecisionSavedState>;
+  onDecisionResolve?: (conflictId: string, resolution: string | null) => void;
 }
 
-export default function StepDecisions({ onNext, onBack }: StepDecisionsProps) {
-  const [decisions, setDecisions] = useState(mockDecisions);
+// Map short day codes to full names
+function capitalizeDay(day: string): string {
+  const dayMap: Record<string, string> = {
+    mon: 'Monday',
+    tue: 'Tuesday',
+    wed: 'Wednesday',
+    thu: 'Thursday',
+    fri: 'Friday',
+    sat: 'Saturday',
+    sun: 'Sunday',
+  };
+  return dayMap[day] || day;
+}
+
+// Generate fallback decision options based on conflict type
+function generateFallbackOptions(conflict: Conflict): string[] {
+  const typeOptions: Record<string, string[]> = {
+    overlap: [
+      'Reschedule one event to another time',
+      'One parent handles both, other covers at home',
+      'Split: one parent starts, other takes over mid-way',
+    ],
+    coverage: [
+      'Ask family member for backup support',
+      'Hire a babysitter for that window',
+      'Handle it solo (it will be okay!)',
+    ],
+    logistics: [
+      'Build in extra buffer time',
+      'Simplify the schedule that day',
+      'Have a backup plan ready',
+    ],
+  };
+  return typeOptions[conflict.type] || typeOptions.overlap;
+}
+
+export default function StepDecisions({
+  onNext,
+  onBack,
+  conflicts,
+  aiDecisionOptions,
+  savedDecisions = {},
+  onDecisionResolve,
+}: StepDecisionsProps) {
+  // Build decisions from conflicts + AI options + saved state
+  const decisions = useMemo(() => {
+    return conflicts.map((conflict) => {
+      // Get AI options or use fallback - try by ID first
+      const aiOptions = aiDecisionOptions?.[conflict.id] || [];
+      const options = aiOptions.length > 0 ? aiOptions : generateFallbackOptions(conflict);
+      const saved = savedDecisions[conflict.id];
+
+      return {
+        id: conflict.id,
+        title: `${capitalizeDay(conflict.day)} ${conflict.type === 'overlap' ? 'conflict' : conflict.type}`,
+        context: conflict.humanContext,
+        options,
+        resolved: saved?.resolved ?? false,
+        resolution: saved?.resolution,
+      };
+    });
+  }, [conflicts, aiDecisionOptions, savedDecisions]);
 
   const resolveDecision = (id: string, resolution: string) => {
-    setDecisions(decs =>
-      decs.map(d =>
-        d.id === id ? { ...d, resolved: true, resolution } : d
-      )
-    );
+    onDecisionResolve?.(id, resolution);
   };
 
   const unresolveDecision = (id: string) => {
-    setDecisions(decs =>
-      decs.map(d =>
-        d.id === id ? { ...d, resolved: false, resolution: undefined } : d
-      )
-    );
+    onDecisionResolve?.(id, null);
   };
 
   const resolvedCount = decisions.filter(d => d.resolved).length;
@@ -36,7 +98,9 @@ export default function StepDecisions({ onNext, onBack }: StepDecisionsProps) {
       {/* Summary */}
       <div className="text-center">
         <p className="text-text-secondary">
-          {decisions.length} decision{decisions.length > 1 ? 's' : ''} to make together.
+          {decisions.length > 0
+            ? `${decisions.length} decision${decisions.length > 1 ? 's' : ''} to make together.`
+            : 'No decisions needed this week.'}
           {resolvedCount > 0 && (
             <span className="text-accent-calm ml-2">
               {resolvedCount} resolved!
@@ -44,6 +108,17 @@ export default function StepDecisions({ onNext, onBack }: StepDecisionsProps) {
           )}
         </p>
       </div>
+
+      {/* Empty state - no conflicts */}
+      {decisions.length === 0 && (
+        <div className="text-center py-8 bg-accent-calm/10 rounded-xl">
+          <div className="text-2xl mb-2">✨</div>
+          <p className="text-accent-calm font-medium">No decisions needed!</p>
+          <p className="text-sm text-text-secondary mt-1">
+            Your week is conflict-free.
+          </p>
+        </div>
+      )}
 
       {/* Decisions */}
       <div className="space-y-4">
@@ -78,7 +153,7 @@ export default function StepDecisions({ onNext, onBack }: StepDecisionsProps) {
           Back
         </Button>
         <Button size="lg" onClick={onNext}>
-          {allResolved ? "Let's wrap up" : 'Continue anyway'}
+          {decisions.length === 0 ? "Let's wrap up" : allResolved ? "Let's wrap up" : 'Continue anyway'}
           <svg className="h-5 w-5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
@@ -99,10 +174,9 @@ function DecisionCard({
   onUnresolve: () => void;
   index: number;
 }) {
-  const [selectedOption, setSelectedOption] = useState<string | null>(decision.resolution || null);
+  const selectedOption = decision.resolution || null;
 
   const handleSelect = (option: string) => {
-    setSelectedOption(option);
     onResolve(option);
   };
 

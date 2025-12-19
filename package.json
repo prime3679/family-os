@@ -9,7 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@auth/prisma-adapter": "^2.11.1",
+    "@prisma/adapter-better-sqlite3": "^7.1.0",
+    "@prisma/client": "^7.1.0",
+    "ai": "^5.0.108",
+    "better-sqlite3": "^12.5.0",
+    "googleapis": "^168.0.0",
     "next": "16.0.8",
+    "next-auth": "^5.0.0-beta.30",
+    "openai": "^6.10.0",
     "react": "19.2.1",
     "react-dom": "19.2.1"
   },
@@ -18,8 +27,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.0.8",
+    "prisma": "^7.1.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
