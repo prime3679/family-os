@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 
 interface RouteParams {
   params: Promise<{ token: string }>;
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Transaction: move user to new household and mark invite as accepted
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // If user has their own household with no other members, delete it
       if (currentUser.householdId) {
         const otherMembers = await tx.user.count({
