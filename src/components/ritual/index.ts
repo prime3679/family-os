@@ -4,4 +4,8 @@ export { default as StepConflicts } from './StepConflicts';
 export type { ConflictInsight } from './StepConflicts';
 export { default as StepPrep } from './StepPrep';
 export { default as StepDecisions } from './StepDecisions';
+export { default as StepSync } from './StepSync';
 export { default as StepReady } from './StepReady';
+export { default as StepTransition } from './StepTransition';
+export { default as Confetti } from './Confetti';
+export { default as PartnerStatus } from './PartnerStatus';

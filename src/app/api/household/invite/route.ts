@@ -7,10 +7,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 // POST: Create a new invite
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 5 requests per minute per IP
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+    if (!checkRateLimit(`invite:${ip}`, 5, 60000)) {
+      return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

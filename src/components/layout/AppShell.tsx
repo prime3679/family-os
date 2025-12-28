@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import Header from './Header';
 import SetupBanner from './SetupBanner';
+import { OfflineBanner } from './OfflineBanner';
 
 interface AppShellProps {
   children: ReactNode;
@@ -43,6 +44,7 @@ export default function AppShell({
       >
         {children}
       </main>
+      <OfflineBanner />
     </div>
   );
 }

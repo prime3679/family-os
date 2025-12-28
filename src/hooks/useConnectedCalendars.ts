@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface GoogleCalendar {
   id: string;
@@ -48,6 +49,7 @@ interface UseConnectedCalendarsResult {
 }
 
 export function useConnectedCalendars(): UseConnectedCalendarsResult {
+  const router = useRouter();
   const [isConnected, setIsConnected] = useState(false);
   const [familyMember, setFamilyMember] = useState<FamilyMember | null>(null);
   const [connectedCalendars, setConnectedCalendars] = useState<ConnectedCalendar[]>([]);
@@ -98,6 +100,7 @@ export function useConnectedCalendars(): UseConnectedCalendarsResult {
       }
 
       await fetchCalendars();
+      router.refresh(); // Refresh server components to update layout
     } catch (err) {
       console.error('Error connecting calendar:', err);
       throw err;
@@ -149,6 +152,7 @@ export function useConnectedCalendars(): UseConnectedCalendarsResult {
       }
 
       await fetchCalendars();
+      router.refresh(); // Refresh server components to update layout
     } catch (err) {
       console.error('Error disconnecting calendar:', err);
       throw err;
@@ -172,6 +176,7 @@ export function useConnectedCalendars(): UseConnectedCalendarsResult {
       }
 
       await fetchCalendars();
+      router.refresh(); // Refresh server components to update layout
     } catch (err) {
       console.error('Error setting up family member:', err);
       throw err;

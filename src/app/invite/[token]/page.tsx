@@ -79,7 +79,7 @@ export default function AcceptInvitePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white">
         <div className="text-center">
-          <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <div className="h-8 w-8 border-2 border-accent-warm border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-600">Loading invite...</p>
         </div>
       </div>
@@ -122,7 +122,7 @@ export default function AcceptInvitePage() {
             <p className="text-green-700 mb-4">
               You&apos;ve successfully joined the household. Redirecting...
             </p>
-            <div className="h-4 w-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <div className="h-4 w-4 border-2 border-accent-warm border-t-transparent rounded-full animate-spin mx-auto" />
           </div>
         </div>
       </div>
@@ -165,7 +165,7 @@ export default function AcceptInvitePage() {
                 >
                   {isAccepting ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span className="h-4 w-4 border-2 border-accent-warm border-t-transparent rounded-full animate-spin" />
                       Joining...
                     </span>
                   ) : (

@@ -1,7 +1,7 @@
 'use client';
 
 import { Conflict } from '@/data/mock-data';
-import { Card, Button } from '@/components/shared';
+import { Card, Button, Skeleton } from '@/components/shared';
 
 export interface ConflictInsight {
   explanation: string;
@@ -14,9 +14,10 @@ interface StepConflictsProps {
   onBack: () => void;
   conflicts: Conflict[];
   aiInsights?: Record<string, ConflictInsight>;
+  isLoadingAI?: boolean;
 }
 
-export default function StepConflicts({ onNext, onBack, conflicts, aiInsights }: StepConflictsProps) {
+export default function StepConflicts({ onNext, onBack, conflicts, aiInsights, isLoadingAI = false }: StepConflictsProps) {
   const highPriority = conflicts.filter(c => c.severity === 'high');
   const mediumPriority = conflicts.filter(c => c.severity === 'medium');
 
@@ -33,8 +34,18 @@ export default function StepConflicts({ onNext, onBack, conflicts, aiInsights }:
         </p>
       </div>
 
+      {/* Loading skeletons while AI generates insights */}
+      {isLoadingAI && !aiInsights && conflicts.length > 0 && (
+        <div className="space-y-4">
+          <Skeleton variant="text" className="w-24 h-3" />
+          {conflicts.slice(0, 2).map((_, index) => (
+            <Skeleton.Card key={index} className="animate-fade-in-up" />
+          ))}
+        </div>
+      )}
+
       {/* High priority conflicts */}
-      {highPriority.length > 0 && (
+      {(!isLoadingAI || aiInsights) && highPriority.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-sm font-medium text-text-tertiary uppercase tracking-wide">
             Needs attention
@@ -51,7 +62,7 @@ export default function StepConflicts({ onNext, onBack, conflicts, aiInsights }:
       )}
 
       {/* Medium priority conflicts */}
-      {mediumPriority.length > 0 && (
+      {(!isLoadingAI || aiInsights) && mediumPriority.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-sm font-medium text-text-tertiary uppercase tracking-wide">
             Worth a conversation

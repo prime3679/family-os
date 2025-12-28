@@ -1,7 +1,7 @@
 'use client';
 
 import { Event, WeekSummary } from '@/data/mock-data';
-import { Card, Button } from '@/components/shared';
+import { Card, Button, Skeleton } from '@/components/shared';
 
 interface WeekDay {
   key: Event['day'];
@@ -21,9 +21,17 @@ interface StepOverviewProps {
     days: WeekDay[];
   };
   aiNarrative?: string;
+  isLoadingAI?: boolean;
 }
 
-export default function StepOverview({ onNext, events, weekSummary, currentWeek, aiNarrative }: StepOverviewProps) {
+export default function StepOverview({
+  onNext,
+  events,
+  weekSummary,
+  currentWeek,
+  aiNarrative,
+  isLoadingAI = false
+}: StepOverviewProps) {
   const { totalEvents, handoffs, travelDays, soloParentingDays, intensity, heaviestDay, narrative } = weekSummary;
 
   // Prefer AI-generated narrative when available
@@ -95,12 +103,16 @@ export default function StepOverview({ onNext, events, weekSummary, currentWeek,
         <StatCard label="Solo parenting" value={soloParentingDays} />
       </div>
 
-      {/* Narrative summary */}
-      <Card>
-        <p className="text-text-secondary leading-relaxed whitespace-pre-line">
-          {displayNarrative}
-        </p>
-      </Card>
+      {/* Narrative summary - with skeleton loading */}
+      {isLoadingAI && !aiNarrative ? (
+        <Skeleton.Narrative />
+      ) : (
+        <Card>
+          <p className="text-text-secondary leading-relaxed whitespace-pre-line">
+            {displayNarrative}
+          </p>
+        </Card>
+      )}
 
       {/* Call to action */}
       <div className="text-center pt-4">

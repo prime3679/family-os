@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Event, PrepItem } from '@/data/mock-data';
-import { Card, Button, Checkbox } from '@/components/shared';
+import { Card, Button, Checkbox, Skeleton } from '@/components/shared';
 
 interface StepPrepProps {
   onNext: () => void;
@@ -12,6 +12,7 @@ interface StepPrepProps {
   // Persistence
   savedPrepItems?: Record<string, boolean>;
   onPrepItemToggle?: (itemKey: string, done: boolean) => void;
+  isLoadingAI?: boolean;
 }
 
 // Map short day codes to full names
@@ -69,7 +70,40 @@ export default function StepPrep({
   aiPrepSuggestions,
   savedPrepItems = {},
   onPrepItemToggle,
+  isLoadingAI = false,
 }: StepPrepProps) {
+  // Task creation state
+  const [creatingTaskFor, setCreatingTaskFor] = useState<string | null>(null);
+  const [tasksCreated, setTasksCreated] = useState<Set<string>>(new Set());
+
+  const handleCreateTask = useCallback(async (eventId: string, itemText: string, eventTitle: string) => {
+    const key = `${eventId}-${itemText}`;
+    setCreatingTaskFor(key);
+
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'event-prep',
+          title: itemText,
+          description: `Prep for: ${eventTitle}`,
+          eventId,
+          assignedTo: 'both',
+          priority: 'normal',
+        }),
+      });
+
+      if (res.ok) {
+        setTasksCreated(prev => new Set(prev).add(key));
+      }
+    } catch (error) {
+      console.error('Failed to create task:', error);
+    } finally {
+      setCreatingTaskFor(null);
+    }
+  }, []);
+
   // Build prep items from events that need prep + AI suggestions + saved state
   const prepItems = useMemo(() => {
     const eventsNeedingPrep = events.filter((e) => e.needsPrep);
@@ -145,17 +179,35 @@ export default function StepPrep({
         </div>
       )}
 
+      {/* Loading skeletons while AI generates suggestions */}
+      {isLoadingAI && !aiPrepSuggestions && prepItems.length > 0 && (
+        <div className="space-y-4">
+          {prepItems.slice(0, 2).map((_, index) => (
+            <Skeleton.PrepCard key={index} className="animate-fade-in-up" />
+          ))}
+        </div>
+      )}
+
       {/* Prep lists */}
-      <div className="space-y-4">
-        {prepItems.map((prep, index) => (
-          <PrepCard
-            key={prep.id}
-            prep={prep}
-            onToggle={(itemId) => toggleItem(prep.id, itemId)}
-            index={index}
-          />
-        ))}
-      </div>
+      {(!isLoadingAI || aiPrepSuggestions) && (
+        <div className="space-y-4">
+          {prepItems.map((prep, index) => {
+            const event = events.find(e => `prep-${e.id}` === prep.id);
+            return (
+              <PrepCard
+                key={prep.id}
+                prep={prep}
+                eventId={event?.id}
+                onToggle={(itemId) => toggleItem(prep.id, itemId)}
+                onCreateTask={handleCreateTask}
+                creatingTaskFor={creatingTaskFor}
+                tasksCreated={tasksCreated}
+                index={index}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {/* Encouragement */}
       {completedItems > 0 && (
@@ -187,11 +239,19 @@ export default function StepPrep({
 
 function PrepCard({
   prep,
+  eventId,
   onToggle,
+  onCreateTask,
+  creatingTaskFor,
+  tasksCreated,
   index,
 }: {
   prep: PrepItem;
+  eventId?: string;
   onToggle: (itemId: string) => void;
+  onCreateTask: (eventId: string, itemText: string, eventTitle: string) => void;
+  creatingTaskFor: string | null;
+  tasksCreated: Set<string>;
   index: number;
 }) {
   const completedCount = prep.items.filter(i => i.done).length;
@@ -222,14 +282,46 @@ function PrepCard({
 
       {/* Checklist */}
       <div className="space-y-3">
-        {prep.items.map(item => (
-          <Checkbox
-            key={item.id}
-            label={item.text}
-            checked={item.done}
-            onCheckedChange={() => onToggle(item.id)}
-          />
-        ))}
+        {prep.items.map(item => {
+          const taskKey = eventId ? `${eventId}-${item.text}` : null;
+          const isCreating = taskKey === creatingTaskFor;
+          const isCreated = taskKey ? tasksCreated.has(taskKey) : false;
+
+          return (
+            <div key={item.id} className="flex items-center gap-2">
+              <div className="flex-1">
+                <Checkbox
+                  label={item.text}
+                  checked={item.done}
+                  onCheckedChange={() => onToggle(item.id)}
+                />
+              </div>
+              {eventId && !isCreated && (
+                <button
+                  onClick={() => onCreateTask(eventId, item.text, prep.eventTitle)}
+                  disabled={isCreating}
+                  aria-label="Add as task"
+                  className="p-1.5 rounded-lg text-text-tertiary hover:text-accent-primary hover:bg-accent-primary/10 transition-colors disabled:opacity-50 flex-shrink-0"
+                  title="Add as task"
+                >
+                  {isCreating ? (
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  )}
+                </button>
+              )}
+              {isCreated && (
+                <span className="text-xs text-accent-calm flex-shrink-0">✓ Task added</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </Card>
   );

@@ -1,7 +1,13 @@
 import { AppShell } from '@/components/layout';
 import SessionProvider from '@/components/providers/SessionProvider';
+import { ToastProvider } from '@/components/providers/ToastProvider';
+import { DemoModeBanner } from '@/components/shared';
+import { ChatProvider } from '@/components/chat';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+
+// Disable caching for this layout to always get fresh data
+export const dynamic = 'force-dynamic';
 
 interface UserSetupStatus {
   familyName: string;
@@ -57,15 +63,19 @@ export default async function AppLayout({
 
   return (
     <SessionProvider>
-      <AppShell
-        familyName={familyName}
-        maxWidth="wide"
-        centered
-        needsCalendarSetup={needsCalendarSetup}
-        isNewMember={isNewMember}
-      >
-        {children}
-      </AppShell>
+      <ToastProvider>
+        <DemoModeBanner />
+        <AppShell
+          familyName={familyName}
+          maxWidth="wide"
+          centered
+          needsCalendarSetup={needsCalendarSetup}
+          isNewMember={isNewMember}
+        >
+          {children}
+        </AppShell>
+        <ChatProvider />
+      </ToastProvider>
     </SessionProvider>
   );
 }

@@ -173,3 +173,182 @@ body {
 .delay-300 { animation-delay: 300ms; }
 .delay-400 { animation-delay: 400ms; }
 .delay-500 { animation-delay: 500ms; }
+
+/* ========================================
+   Step Transition Animations
+   ======================================== */
+
+@keyframes stepSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes stepSlideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes stepFadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
+.animate-step-enter-forward {
+  animation: stepSlideInRight 0.3s ease-out forwards;
+}
+
+.animate-step-enter-backward {
+  animation: stepSlideInLeft 0.3s ease-out forwards;
+}
+
+.animate-step-exit {
+  animation: stepFadeOut 0.2s ease-in forwards;
+}
+
+/* ========================================
+   Celebration Animations
+   ======================================== */
+
+@keyframes celebrateBounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.08);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  75% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes celebrateGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(139, 157, 131, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 30px 15px rgba(139, 157, 131, 0.15);
+  }
+}
+
+@keyframes checkmarkDraw {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes floatUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-celebrate-bounce {
+  animation: celebrateBounce 0.6s ease-out;
+}
+
+.animate-celebrate-glow {
+  animation: celebrateGlow 2s ease-in-out;
+}
+
+.animate-checkmark-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: checkmarkDraw 0.5s ease-out 0.3s forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-float-up {
+  animation: floatUp 0.5s ease-out forwards;
+}
+
+/* ========================================
+   Skeleton Loading Animation
+   ======================================== */
+
+@keyframes skeletonPulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-skeleton-pulse {
+  background: linear-gradient(
+    90deg,
+    var(--border) 0%,
+    var(--surface-alt) 50%,
+    var(--border) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+/* ========================================
+   Accessibility: Reduced Motion
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-step-enter-forward,
+  .animate-step-enter-backward,
+  .animate-step-exit,
+  .animate-celebrate-bounce,
+  .animate-celebrate-glow,
+  .animate-checkmark-draw,
+  .animate-scale-in,
+  .animate-float-up,
+  .animate-fade-in-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .animate-skeleton-pulse {
+    animation: none;
+    background: var(--border);
+  }
+}

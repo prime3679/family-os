@@ -228,13 +228,13 @@ export default function WeekPage() {
       </Card>
 
       {/* Week grid */}
-      <div className="grid grid-cols-7 gap-3">
+      <div className="flex overflow-x-auto gap-2 pb-2 snap-x snap-mandatory md:grid md:grid-cols-7 md:gap-3 md:overflow-visible md:pb-0">
         {currentWeek.days.map(day => {
           const dayEvents = getEventsForDay(day.short);
           const hasConflicts = dayHasConflicts(day.short);
 
           return (
-            <div key={day.key} className="min-h-[200px]">
+            <div key={day.key} className="flex-shrink-0 w-[85vw] snap-start md:w-auto md:flex-shrink min-h-[200px]">
               {/* Day header */}
               <div
                 className={`
@@ -348,7 +348,7 @@ function PrepDetailModal({ event, prepStatus, onClose, onToggle }: PrepDetailMod
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-surface-alt transition-colors"
+              className="min-h-[44px] min-w-[44px] p-2 rounded-lg hover:bg-surface-alt transition-colors"
             >
               <svg className="h-5 w-5 text-text-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

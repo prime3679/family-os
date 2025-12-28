@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Conflict, Decision } from '@/data/mock-data';
-import { Card, Button } from '@/components/shared';
+import { Card, Button, Skeleton } from '@/components/shared';
 
 interface DecisionSavedState {
   resolved: boolean;
@@ -17,6 +17,7 @@ interface StepDecisionsProps {
   // Persistence
   savedDecisions?: Record<string, DecisionSavedState>;
   onDecisionResolve?: (conflictId: string, resolution: string | null) => void;
+  isLoadingAI?: boolean;
 }
 
 // Map short day codes to full names
@@ -62,7 +63,43 @@ export default function StepDecisions({
   aiDecisionOptions,
   savedDecisions = {},
   onDecisionResolve,
+  isLoadingAI = false,
 }: StepDecisionsProps) {
+  // Task creation state
+  const [creatingTaskFor, setCreatingTaskFor] = useState<string | null>(null);
+  const [tasksCreated, setTasksCreated] = useState<Set<string>>(new Set());
+
+  const handleCreateFollowupTask = useCallback(async (decisionId: string, resolution: string, decisionTitle: string) => {
+    setCreatingTaskFor(decisionId);
+
+    try {
+      // Create a concise task title from the resolution
+      const taskTitle = resolution.length > 50
+        ? `${resolution.substring(0, 47)}...`
+        : resolution;
+
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'decision-followup',
+          title: taskTitle,
+          description: `Decision: ${decisionTitle}\nAction: ${resolution}`,
+          assignedTo: 'both',
+          priority: 'normal',
+        }),
+      });
+
+      if (res.ok) {
+        setTasksCreated(prev => new Set(prev).add(decisionId));
+      }
+    } catch (error) {
+      console.error('Failed to create follow-up task:', error);
+    } finally {
+      setCreatingTaskFor(null);
+    }
+  }, []);
+
   // Build decisions from conflicts + AI options + saved state
   const decisions = useMemo(() => {
     return conflicts.map((conflict) => {
@@ -120,18 +157,32 @@ export default function StepDecisions({
         </div>
       )}
 
+      {/* Loading skeletons while AI generates options */}
+      {isLoadingAI && !aiDecisionOptions && decisions.length > 0 && (
+        <div className="space-y-4">
+          {decisions.slice(0, 2).map((_, index) => (
+            <Skeleton.DecisionCard key={index} className="animate-fade-in-up" />
+          ))}
+        </div>
+      )}
+
       {/* Decisions */}
-      <div className="space-y-4">
-        {decisions.map((decision, index) => (
-          <DecisionCard
-            key={decision.id}
-            decision={decision}
-            onResolve={(resolution) => resolveDecision(decision.id, resolution)}
-            onUnresolve={() => unresolveDecision(decision.id)}
-            index={index}
-          />
-        ))}
-      </div>
+      {(!isLoadingAI || aiDecisionOptions) && (
+        <div className="space-y-4">
+          {decisions.map((decision, index) => (
+            <DecisionCard
+              key={decision.id}
+              decision={decision}
+              onResolve={(resolution) => resolveDecision(decision.id, resolution)}
+              onUnresolve={() => unresolveDecision(decision.id)}
+              onCreateTask={handleCreateFollowupTask}
+              creatingTaskFor={creatingTaskFor}
+              taskCreated={tasksCreated.has(decision.id)}
+              index={index}
+            />
+          ))}
+        </div>
+      )}
 
       {/* All resolved celebration */}
       {allResolved && (
@@ -167,14 +218,21 @@ function DecisionCard({
   decision,
   onResolve,
   onUnresolve,
+  onCreateTask,
+  creatingTaskFor,
+  taskCreated,
   index,
 }: {
   decision: Decision;
   onResolve: (resolution: string) => void;
   onUnresolve: () => void;
+  onCreateTask: (decisionId: string, resolution: string, decisionTitle: string) => void;
+  creatingTaskFor: string | null;
+  taskCreated: boolean;
   index: number;
 }) {
   const selectedOption = decision.resolution || null;
+  const isCreatingTask = creatingTaskFor === decision.id;
 
   const handleSelect = (option: string) => {
     onResolve(option);
@@ -234,6 +292,47 @@ function DecisionCard({
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Create follow-up task option */}
+      {decision.resolved && decision.resolution && !taskCreated && (
+        <div className="mt-4 pt-4 border-t border-border">
+          <button
+            onClick={() => onCreateTask(decision.id, decision.resolution!, decision.title)}
+            disabled={isCreatingTask}
+            aria-label="Create follow-up task"
+            className="flex items-center gap-2 text-sm text-accent-primary hover:text-accent-primary/80 transition-colors disabled:opacity-50"
+          >
+            {isCreatingTask ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Creating task...
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create follow-up task
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Task created confirmation */}
+      {taskCreated && (
+        <div className="mt-4 pt-4 border-t border-border">
+          <span className="text-sm text-accent-calm flex items-center gap-2">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Follow-up task created
+          </span>
         </div>
       )}
     </Card>

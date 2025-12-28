@@ -30,6 +30,7 @@ export interface UseRitualStateResult {
   setDecisionResolution: (conflictId: string, resolution: string | null) => void;
   setCurrentStep: (step: number) => void;
   resetWeek: () => Promise<void>;
+  markComplete: () => Promise<void>;
 
   // Meta
   weekKey: string;
@@ -231,6 +232,39 @@ export function useRitualState(): UseRitualStateResult {
     }
   }, [weekKey, isDemo]);
 
+  // Action: Mark ritual as complete
+  const markComplete = useCallback(async () => {
+    const completedAt = new Date().toISOString();
+
+    setState((prev) => ({ ...prev, completedAt }));
+
+    if (isDemo) {
+      // Save to localStorage
+      try {
+        const current = localStorage.getItem(`${STORAGE_PREFIX}${weekKey}`);
+        const existing = current ? JSON.parse(current) : { weekKey, currentStep: 1, prepItems: {}, decisions: {} };
+        const updated = {
+          ...existing,
+          completedAt,
+        };
+        localStorage.setItem(`${STORAGE_PREFIX}${weekKey}`, JSON.stringify(updated));
+      } catch (error) {
+        console.error('Failed to save completion to localStorage:', error);
+      }
+    } else {
+      // Save to API
+      try {
+        await fetch('/api/ritual/state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ weekKey, completedAt }),
+        });
+      } catch (error) {
+        console.error('Failed to save ritual completion:', error);
+      }
+    }
+  }, [weekKey, isDemo]);
+
   return {
     prepItems: state.prepItems,
     decisions: state.decisions,
@@ -241,6 +275,7 @@ export function useRitualState(): UseRitualStateResult {
     setDecisionResolution,
     setCurrentStep,
     resetWeek,
+    markComplete,
     weekKey,
     isDemo,
   };

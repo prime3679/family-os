@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   RitualProgress,
@@ -8,15 +8,33 @@ import {
   StepConflicts,
   StepPrep,
   StepDecisions,
+  StepSync,
   StepReady,
+  StepTransition,
+  PartnerStatus,
 } from '@/components/ritual';
 import { useCalendarEvents } from '@/hooks/useCalendarEvents';
 import { useWeekInsights } from '@/hooks/useWeekInsights';
 import { useRitualState } from '@/hooks/useRitualState';
+import { useHouseholdRitual } from '@/hooks/useHouseholdRitual';
+import { usePartnerDecisions } from '@/hooks/usePartnerDecisions';
 import { getCurrentWeek, detectConflicts, generateWeekSummary } from '@/lib/calendar/analyzeWeek';
 
 export default function RitualPage() {
   const { events, isLoading, isUsingMockData } = useCalendarEvents();
+
+  // Household ritual state for partner sync
+  const {
+    hasPartner,
+    partnerProgress,
+    needsSync,
+    isLoading: isLoadingHousehold,
+    refetch: refetchHousehold,
+  } = useHouseholdRitual();
+
+  // Direction tracking for step transitions
+  const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
+  const previousStepRef = useRef<number>(1);
 
   // Ritual state persistence
   const {
@@ -28,10 +46,19 @@ export default function RitualPage() {
     setDecisionResolution,
     setCurrentStep: persistStep,
     resetWeek,
+    markComplete,
   } = useRitualState();
 
   // Use saved step directly (default to 1 while loading)
   const currentStep = isLoadingState ? 1 : (savedStep || 1);
+
+  // Update direction when step changes
+  useEffect(() => {
+    if (currentStep !== previousStepRef.current) {
+      setDirection(currentStep > previousStepRef.current ? 'forward' : 'backward');
+      previousStepRef.current = currentStep;
+    }
+  }, [currentStep]);
 
   // Compute week data from events
   const currentWeek = useMemo(() => getCurrentWeek(), []);
@@ -44,6 +71,22 @@ export default function RitualPage() {
     conflicts,
     weekSummary
   );
+
+  // Partner decisions for sync step
+  const {
+    comparisons,
+    conflictingDecisions,
+    allSynced,
+    syncDecision,
+    isSyncing,
+    refetch: refetchDecisions,
+  } = usePartnerDecisions();
+
+  // Handler for when sync is complete - refetch both household and decisions
+  const handleSyncComplete = async () => {
+    await markComplete();
+    await Promise.all([refetchHousehold(), refetchDecisions()]);
+  };
 
   const goToStep = (step: number) => {
     if (step >= 1 && step <= 5) {
@@ -96,56 +139,86 @@ export default function RitualPage() {
         </div>
       )}
 
+      {/* Partner status indicator */}
+      <PartnerStatus
+        hasPartner={hasPartner}
+        partnerProgress={partnerProgress}
+        myCompleted={currentStep === 5}
+        needsSync={needsSync}
+        isLoading={isLoadingHousehold}
+      />
+
       {/* Progress indicator */}
       <RitualProgress currentStep={currentStep} onStepClick={goToStep} />
 
-      {/* Step content */}
+      {/* Step content with transitions */}
       <div className="mt-8">
-        {currentStep === 1 && (
-          <StepOverview
-            onNext={nextStep}
-            events={events}
-            weekSummary={weekSummary}
-            currentWeek={currentWeek}
-            aiNarrative={insights?.narrative}
-          />
-        )}
-        {currentStep === 2 && (
-          <StepConflicts
-            onNext={nextStep}
-            onBack={prevStep}
-            conflicts={conflicts}
-            aiInsights={insights?.conflictInsights}
-          />
-        )}
-        {currentStep === 3 && (
-          <StepPrep
-            onNext={nextStep}
-            onBack={prevStep}
-            events={events}
-            aiPrepSuggestions={insights?.prepSuggestions}
-            savedPrepItems={savedPrepItems}
-            onPrepItemToggle={setPrepItemDone}
-          />
-        )}
-        {currentStep === 4 && (
-          <StepDecisions
-            onNext={nextStep}
-            onBack={prevStep}
-            conflicts={conflicts}
-            aiDecisionOptions={insights?.decisionOptions}
-            savedDecisions={savedDecisions}
-            onDecisionResolve={setDecisionResolution}
-          />
-        )}
-        {currentStep === 5 && (
-          <StepReady
-            onBack={prevStep}
-            onStartOver={startOver}
-            weekSummary={weekSummary}
-            aiAffirmation={insights?.affirmation}
-          />
-        )}
+        <StepTransition stepKey={currentStep} direction={direction}>
+          {currentStep === 1 && (
+            <StepOverview
+              onNext={nextStep}
+              events={events}
+              weekSummary={weekSummary}
+              currentWeek={currentWeek}
+              aiNarrative={insights?.narrative}
+              isLoadingAI={isLoadingAI}
+            />
+          )}
+          {currentStep === 2 && (
+            <StepConflicts
+              onNext={nextStep}
+              onBack={prevStep}
+              conflicts={conflicts}
+              aiInsights={insights?.conflictInsights}
+              isLoadingAI={isLoadingAI}
+            />
+          )}
+          {currentStep === 3 && (
+            <StepPrep
+              onNext={nextStep}
+              onBack={prevStep}
+              events={events}
+              aiPrepSuggestions={insights?.prepSuggestions}
+              savedPrepItems={savedPrepItems}
+              onPrepItemToggle={setPrepItemDone}
+              isLoadingAI={isLoadingAI}
+            />
+          )}
+          {currentStep === 4 && (
+            <StepDecisions
+              onNext={nextStep}
+              onBack={prevStep}
+              conflicts={conflicts}
+              aiDecisionOptions={insights?.decisionOptions}
+              savedDecisions={savedDecisions}
+              onDecisionResolve={setDecisionResolution}
+              isLoadingAI={isLoadingAI}
+            />
+          )}
+          {currentStep === 5 && (
+            needsSync && conflictingDecisions.length > 0 ? (
+              <StepSync
+                onNext={handleSyncComplete}
+                onBack={prevStep}
+                partnerName={partnerProgress?.name || 'Partner'}
+                comparisons={comparisons}
+                conflictingDecisions={conflictingDecisions}
+                onSyncDecision={syncDecision}
+                isSyncing={isSyncing}
+              />
+            ) : (
+              <StepReady
+                onBack={prevStep}
+                onStartOver={startOver}
+                weekSummary={weekSummary}
+                aiAffirmation={insights?.affirmation}
+                isWaitingForPartner={hasPartner && !partnerProgress?.completedAt}
+                partnerName={partnerProgress?.name}
+                onComplete={markComplete}
+              />
+            )
+          )}
+        </StepTransition>
       </div>
     </div>
   );

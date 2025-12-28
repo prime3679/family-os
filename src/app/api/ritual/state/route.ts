@@ -10,6 +10,9 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getWeekKey } from '@/lib/ritual/weekKey';
+import { sendPartnerCompleteEmail } from '@/lib/notifications/email/send';
+import { sendPartnerCompletePush } from '@/lib/notifications/push/send';
+import { generateSnapshotForRitual } from '@/lib/analytics/generateSnapshot';
 
 export interface RitualStateResponse {
   weekKey: string;
@@ -106,6 +109,34 @@ export async function PUT(request: Request) {
     const body: UpdateStateRequest = await request.json();
     const weekKey = body.weekKey || getWeekKey();
 
+    // Check if user has a household for partner sync
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { householdId: true },
+    });
+
+    // Get or create household week if user has a household
+    let householdWeekId: string | undefined;
+    if (user?.householdId) {
+      const householdWeek = await prisma.householdRitualWeek.upsert({
+        where: {
+          householdId_weekKey: {
+            householdId: user.householdId,
+            weekKey,
+          },
+        },
+        update: {
+          status: 'in_progress', // Mark as in progress when any partner is active
+        },
+        create: {
+          householdId: user.householdId,
+          weekKey,
+          status: 'in_progress',
+        },
+      });
+      householdWeekId = householdWeek.id;
+    }
+
     // Upsert the ritual session
     const ritualSession = await prisma.ritualSession.upsert({
       where: {
@@ -117,12 +148,14 @@ export async function PUT(request: Request) {
       update: {
         currentStep: body.currentStep,
         completedAt: body.completedAt ? new Date(body.completedAt) : undefined,
+        householdWeekId,
       },
       create: {
         userId: session.user.id,
         weekKey,
         currentStep: body.currentStep || 1,
         completedAt: body.completedAt ? new Date(body.completedAt) : undefined,
+        householdWeekId,
       },
     });
 
@@ -170,6 +203,15 @@ export async function PUT(request: Request) {
       }
     }
 
+    // Send notifications to partner when ritual is completed
+    if (body.completedAt && user?.householdId) {
+      // Fire and forget - don't block the response
+      notifyPartnerOfCompletion(session.user.id, user.householdId, weekKey).catch(console.error);
+
+      // Generate snapshot for analytics
+      generateSnapshotForRitual(user.householdId, weekKey).catch(console.error);
+    }
+
     return NextResponse.json({ success: true, weekKey });
   } catch (error) {
     console.error('Failed to save ritual state:', error);
@@ -177,6 +219,74 @@ export async function PUT(request: Request) {
       { error: 'Failed to save ritual state' },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Helper function to notify partner when ritual is completed
+ */
+async function notifyPartnerOfCompletion(
+  userId: string,
+  householdId: string,
+  weekKey: string
+) {
+  try {
+    // Get the completing user and their partner
+    const completingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        familyMember: true,
+      },
+    });
+
+    // Get partner in the same household
+    const partner = await prisma.user.findFirst({
+      where: {
+        householdId,
+        id: { not: userId },
+      },
+      include: {
+        familyMember: true,
+        notificationPreference: true,
+      },
+    });
+
+    if (!partner || !partner.email) {
+      return;
+    }
+
+    const senderName = completingUser?.familyMember?.displayName || completingUser?.name || 'Your partner';
+    const recipientName = partner.familyMember?.displayName || partner.name || 'there';
+
+    // Format week range for email
+    const [year, week] = weekKey.split('-W');
+    const weekStart = new Date(parseInt(year), 0, 1 + (parseInt(week) - 1) * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    const weekRange = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+    const prefs = partner.notificationPreference;
+
+    // Send push notification
+    if (prefs?.pushEnabled && prefs?.pushPartnerComplete) {
+      await sendPartnerCompletePush({
+        toUserId: partner.id,
+        partnerName: senderName,
+      });
+    }
+
+    // Send email notification
+    if (prefs?.emailPartnerComplete) {
+      await sendPartnerCompleteEmail({
+        toUserId: partner.id,
+        toEmail: partner.email,
+        recipientName,
+        partnerName: senderName,
+        weekRange,
+      });
+    }
+  } catch (error) {
+    console.error('Failed to notify partner of completion:', error);
   }
 }
 

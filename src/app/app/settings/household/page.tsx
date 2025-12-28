@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { Card, Button } from '@/components/shared';
+import { ChildList } from '@/components/children';
 
 interface HouseholdMember {
   id: string;
@@ -60,6 +61,9 @@ export default function HouseholdSettingsPage() {
 
     if (session) {
       fetchData();
+    } else if (session === null) {
+      // Session loaded but user not authenticated
+      setIsLoading(false);
     }
   }, [session]);
 
@@ -185,7 +189,7 @@ export default function HouseholdSettingsPage() {
                 </div>
 
                 {error && (
-                  <p className="text-sm text-red-600">{error}</p>
+                  <p className="text-sm text-accent-alert">{error}</p>
                 )}
 
                 {inviteUrl && (
@@ -314,6 +318,9 @@ export default function HouseholdSettingsPage() {
               </div>
             </Card>
           </section>
+
+          {/* Children */}
+          <ChildList />
         </div>
       </div>
     </div>
