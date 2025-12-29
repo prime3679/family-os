@@ -16,3 +16,11 @@ export {
   type HouseholdContext,
   type DetectedInsight,
 } from './patterns';
+
+export {
+  generateUserBriefing,
+  generateHouseholdBriefings,
+  generateAllBriefings,
+  type DailyBriefingResult,
+  type HouseholdBriefingResult,
+} from './daily-briefing';

@@ -4,7 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
-type Step = 'welcome' | 'calendar' | 'phone' | 'verify' | 'partner' | 'done';
+type Step = 'welcome' | 'calendar' | 'scanning' | 'phone' | 'verify' | 'partner' | 'done';
+
+interface CalendarPreview {
+  eventCount: number;
+  conflictCount: number;
+  busyDays: string[];
+  clearDays: string[];
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -25,6 +32,9 @@ export default function OnboardingPage() {
   // Check current setup status
   const [hasCalendar, setHasCalendar] = useState(false);
   const [hasPhone, setHasPhone] = useState(false);
+
+  // Calendar preview (what Scout found)
+  const [calendarPreview, setCalendarPreview] = useState<CalendarPreview | null>(null);
 
   useEffect(() => {
     checkSetupStatus();
@@ -56,6 +66,57 @@ export default function OnboardingPage() {
   async function handleConnectCalendar() {
     // Redirect to Google OAuth
     window.location.href = '/api/auth/signin?callbackUrl=/app/onboarding';
+  }
+
+  async function scanCalendarForPreview() {
+    setStep('scanning');
+    try {
+      // Fetch this week's events
+      const eventsRes = await fetch('/api/calendar/events');
+      const eventsData = await eventsRes.json();
+
+      // Fetch insights to see conflicts
+      const insightsRes = await fetch('/api/insights');
+      const insightsData = await insightsRes.json();
+
+      const events = eventsData.events || [];
+      const conflicts = (insightsData.insights || []).filter(
+        (i: { type: string }) => i.type === 'conflict' || i.type === 'coverage_gap'
+      );
+
+      // Count events by day
+      const dayEventCounts: Record<string, number> = {};
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+      events.forEach((event: { start?: { dateTime?: string; date?: string } }) => {
+        const dateStr = event.start?.dateTime || event.start?.date;
+        if (dateStr) {
+          const date = new Date(dateStr);
+          const day = dayNames[date.getDay()];
+          dayEventCounts[day] = (dayEventCounts[day] || 0) + 1;
+        }
+      });
+
+      const busyDays = Object.entries(dayEventCounts)
+        .filter(([, count]) => count >= 3)
+        .map(([day]) => day);
+
+      const clearDays = dayNames.filter(day => !dayEventCounts[day]);
+
+      setCalendarPreview({
+        eventCount: events.length,
+        conflictCount: conflicts.length,
+        busyDays,
+        clearDays: clearDays.slice(0, 2), // Show max 2 clear days
+      });
+
+      // Brief pause to show the scan results
+      setTimeout(() => setStep('phone'), 2500);
+    } catch (e) {
+      console.error('Error scanning calendar:', e);
+      // Even if scan fails, proceed to phone step
+      setStep('phone');
+    }
   }
 
   async function handleSendCode() {
@@ -130,11 +191,11 @@ export default function OnboardingPage() {
       <div className="max-w-md w-full">
         {/* Progress indicator */}
         <div className="flex justify-center gap-2 mb-8">
-          {['welcome', 'calendar', 'phone', 'verify', 'partner', 'done'].map((s, i) => (
+          {['welcome', 'calendar', 'scanning', 'phone', 'verify', 'partner', 'done'].map((s, i) => (
             <div
               key={s}
               className={`h-2 w-8 rounded-full transition-colors ${
-                i <= ['welcome', 'calendar', 'phone', 'verify', 'partner', 'done'].indexOf(step)
+                i <= ['welcome', 'calendar', 'scanning', 'phone', 'verify', 'partner', 'done'].indexOf(step)
                   ? 'bg-accent-primary'
                   : 'bg-border'
               }`}
@@ -145,22 +206,22 @@ export default function OnboardingPage() {
         <div className="bg-white rounded-2xl shadow-lg p-8">
           {step === 'welcome' && (
             <div className="text-center">
-              <div className="text-5xl mb-4">👨‍👩‍👧‍👦</div>
+              <div className="text-5xl mb-4">🔍</div>
               <h1 className="font-serif text-2xl text-text-primary mb-2">
-                Welcome to FamilyOS
+                Meet Scout
               </h1>
               <p className="text-text-secondary mb-6">
-                Your family&apos;s proactive AI assistant. We&apos;ll text you when something needs attention - no app required for day-to-day coordination.
+                Scout is your family&apos;s friendly assistant who scouts ahead to find what matters in your day. No app required — Scout texts you when something needs attention.
               </p>
               <div className="bg-surface-alt rounded-lg p-4 mb-6 text-left">
                 <p className="text-sm text-text-secondary">
-                  <strong className="text-text-primary">How it works:</strong>
+                  <strong className="text-text-primary">How Scout helps:</strong>
                 </p>
                 <ul className="text-sm text-text-secondary mt-2 space-y-1">
-                  <li>📅 We watch your calendars</li>
-                  <li>📱 We text you when there&apos;s a conflict or gap</li>
-                  <li>✅ You reply YES/NO to resolve</li>
-                  <li>👫 Your partner stays in sync automatically</li>
+                  <li>📅 Watches your calendars for conflicts</li>
+                  <li>📱 Texts you when something needs attention</li>
+                  <li>✅ Quick replies resolve issues fast</li>
+                  <li>👫 Keeps you and your partner in sync</li>
                 </ul>
               </div>
               <button
@@ -179,7 +240,7 @@ export default function OnboardingPage() {
                 Connect Your Calendar
               </h1>
               <p className="text-text-secondary mb-6">
-                We need access to your Google Calendar to detect conflicts and coordinate with your partner.
+                Scout needs access to your Google Calendar to spot conflicts and help coordinate with your partner.
               </p>
               {hasCalendar ? (
                 <div className="bg-green-50 text-green-700 rounded-lg p-4 mb-6">
@@ -187,11 +248,72 @@ export default function OnboardingPage() {
                 </div>
               ) : null}
               <button
-                onClick={hasCalendar ? () => setStep('phone') : handleConnectCalendar}
+                onClick={hasCalendar ? scanCalendarForPreview : handleConnectCalendar}
                 className="w-full py-3 bg-accent-primary text-white rounded-lg font-medium hover:bg-accent-primary/90 transition-colors"
               >
-                {hasCalendar ? 'Continue' : 'Connect Google Calendar'}
+                {hasCalendar ? 'Let Scout Scan Your Week' : 'Connect Google Calendar'}
               </button>
+            </div>
+          )}
+
+          {step === 'scanning' && (
+            <div className="text-center">
+              <div className="text-5xl mb-4 animate-pulse">🔍</div>
+              <h1 className="font-serif text-2xl text-text-primary mb-2">
+                Scout is scanning...
+              </h1>
+              {!calendarPreview ? (
+                <p className="text-text-secondary mb-6">
+                  Looking at your week to see what&apos;s ahead...
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-surface-alt rounded-lg p-4 text-left">
+                    <p className="text-sm font-medium text-text-primary mb-3">
+                      👀 Here&apos;s what I found:
+                    </p>
+                    <ul className="text-sm text-text-secondary space-y-2">
+                      <li className="flex items-center gap-2">
+                        <span className="text-lg">📅</span>
+                        <span>
+                          {calendarPreview.eventCount === 0
+                            ? 'Clear calendar this week!'
+                            : `${calendarPreview.eventCount} event${calendarPreview.eventCount !== 1 ? 's' : ''} this week`}
+                        </span>
+                      </li>
+                      {calendarPreview.conflictCount > 0 && (
+                        <li className="flex items-center gap-2 text-amber-600">
+                          <span className="text-lg">⚠️</span>
+                          <span>
+                            {calendarPreview.conflictCount} thing{calendarPreview.conflictCount !== 1 ? 's' : ''} to watch
+                          </span>
+                        </li>
+                      )}
+                      {calendarPreview.conflictCount === 0 && calendarPreview.eventCount > 0 && (
+                        <li className="flex items-center gap-2 text-green-600">
+                          <span className="text-lg">✓</span>
+                          <span>No conflicts spotted!</span>
+                        </li>
+                      )}
+                      {calendarPreview.busyDays.length > 0 && (
+                        <li className="flex items-center gap-2">
+                          <span className="text-lg">🏃</span>
+                          <span>Busy days: {calendarPreview.busyDays.join(', ')}</span>
+                        </li>
+                      )}
+                      {calendarPreview.clearDays.length > 0 && (
+                        <li className="flex items-center gap-2">
+                          <span className="text-lg">🎯</span>
+                          <span>Clear: {calendarPreview.clearDays.join(', ')}</span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                  <p className="text-sm text-text-tertiary">
+                    I&apos;ll keep watching and text you when something needs attention...
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -332,15 +454,15 @@ export default function OnboardingPage() {
                 You&apos;re All Set!
               </h1>
               <p className="text-text-secondary mb-6">
-                FamilyOS is now watching your calendar. We&apos;ll text you when something needs attention.
+                Scout is now watching your calendar. You&apos;ll get a text when something needs attention.
               </p>
               <div className="bg-surface-alt rounded-lg p-4 mb-6 text-left">
-                <p className="text-sm font-medium text-text-primary mb-2">What happens next:</p>
+                <p className="text-sm font-medium text-text-primary mb-2">What Scout does:</p>
                 <ul className="text-sm text-text-secondary space-y-2">
-                  <li>📱 You&apos;ll get a text when we spot a conflict or gap</li>
-                  <li>💬 Reply YES/NO/A/B to resolve quickly</li>
-                  <li>👫 Your partner stays in sync automatically</li>
-                  <li>🌐 Use this web app for Deep Sync or settings</li>
+                  <li>📱 Texts you when conflicts or gaps pop up</li>
+                  <li>💬 Quick replies (YES/NO/A/B) resolve things fast</li>
+                  <li>👫 Keeps your partner automatically in sync</li>
+                  <li>🌐 Web app for Deep Sync or settings</li>
                 </ul>
               </div>
               <button

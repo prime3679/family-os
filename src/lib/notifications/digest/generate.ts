@@ -2,7 +2,8 @@ import { prisma } from '@/lib/db';
 import { sendWeeklyDigest } from '../email/send';
 import { generateDigestNarrative } from './ai-narrative';
 import { detectConflicts, generateWeekSummary, getCurrentWeek } from '@/lib/calendar/analyzeWeek';
-import type { Event, Conflict, WeekSummary } from '@/data/mock-data';
+import { fetchGoogleCalendarEvents, getWeekBoundaries } from '@/lib/calendar/google';
+import type { Event, Conflict } from '@/data/mock-data';
 
 /**
  * Generate and send weekly digests to all eligible users
@@ -49,9 +50,54 @@ export async function generateAndSendDigests(): Promise<{
         continue;
       }
 
-      // For now, use an empty events array - in production, fetch from calendar
+      // Fetch real calendar events for the week
+      const { start, end } = getWeekBoundaries();
       const events: Event[] = [];
-      const conflicts: Conflict[] = [];
+
+      for (const calendar of user.familyMember.calendars) {
+        if (!calendar.included) continue;
+
+        try {
+          const calEvents = await fetchGoogleCalendarEvents(
+            user.id,
+            calendar.googleCalendarId,
+            start,
+            end
+          );
+
+          for (const event of calEvents) {
+            if (!event.start?.dateTime && !event.start?.date) continue;
+            if (!event.summary) continue;
+
+            const startDate = event.start.dateTime
+              ? new Date(event.start.dateTime)
+              : new Date(event.start.date + 'T00:00:00');
+
+            // Map to Event type
+            const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+            const day = dayNames[startDate.getDay()];
+            const hour = startDate.getHours();
+            const period = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+
+            events.push({
+              id: event.id,
+              title: event.summary,
+              time: startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+              day: day === 'sun' ? 'sun' : day as Event['day'],
+              period,
+              parent: 'A', // Default to parent A since we're fetching for one user
+              ownerName: user.name || undefined,
+              calendar: calendar.name,
+              type: 'personal',
+            });
+          }
+        } catch (error) {
+          console.error(`Failed to fetch calendar ${calendar.name}:`, error);
+        }
+      }
+
+      // Detect conflicts using the analyzeWeek utility
+      const conflicts: Conflict[] = events.length > 0 ? detectConflicts(events) : [];
 
       if (events.length === 0) {
         results.skipped++;

@@ -1,8 +1,11 @@
 /**
- * SMS Message Templates for FamilyOS
+ * Scout's SMS Message Templates
  *
- * These templates define the SMS messages sent for different insight types.
- * Each template includes reply options for quick one-tap resolution.
+ * Scout sends warm, helpful messages that acknowledge parenting chaos
+ * while keeping things actionable. These templates power the proactive
+ * SMS alerts that help families stay coordinated.
+ *
+ * Tone: Friendly helper, not corporate assistant
  */
 
 export type InsightType =
@@ -57,7 +60,7 @@ export interface SMSTemplate {
 export const calendarGapTemplate: SMSTemplate = {
   type: 'calendar_gap',
   generate: (data) =>
-    `📅 "${data.eventName}" is on ${data.partnerName}'s calendar but not yours (${data.day}). Add it?\n\nReply YES or NO`,
+    `👀 Spotted: "${data.eventName}" is on ${data.partnerName}'s calendar for ${data.day}, but not yours. Want me to add it?\n\nReply YES or NO`,
   replyOptions: ['YES', 'NO'],
   parseReply: (reply) => {
     const normalized = reply.trim().toUpperCase();
@@ -78,14 +81,15 @@ export const calendarGapTemplate: SMSTemplate = {
 export const conflictTemplate: SMSTemplate = {
   type: 'conflict',
   generate: (data) =>
-    `⚠️ You both have events at ${data.time} ${data.day}. Who handles pickup?\n\nReply A (you), B (${data.partnerName}), or HELP`,
-  replyOptions: ['A', 'B', 'HELP'],
+    `🚨 Heads up! You both have things at ${data.time} on ${data.day}. Who's got pickup covered?\n\nReply ME, ${data.partnerName?.toUpperCase()?.split(' ')[0] || 'PARTNER'}, or HELP`,
+  replyOptions: ['ME', 'PARTNER', 'HELP'],
   parseReply: (reply) => {
     const normalized = reply.trim().toUpperCase();
-    if (normalized === 'A' || normalized === 'ME') {
+    if (normalized === 'ME' || normalized === 'A' || normalized === 'I') {
       return { action: 'assign_self', valid: true };
     }
-    if (normalized === 'B' || normalized === 'PARTNER') {
+    if (normalized === 'PARTNER' || normalized === 'B' || normalized.length <= 10) {
+      // Accept partner's first name as valid response
       return { action: 'assign_partner', valid: true };
     }
     if (normalized === 'HELP') {
@@ -102,14 +106,14 @@ export const conflictTemplate: SMSTemplate = {
 export const coverageGapTemplate: SMSTemplate = {
   type: 'coverage_gap',
   generate: (data) =>
-    `🚨 No one free for ${data.childName || 'kids'} pickup ${data.time} ${data.day}. Need backup?\n\nReply YES for options or HANDLE (I'll figure it out)`,
-  replyOptions: ['YES', 'HANDLE'],
+    `😬 Found a gap: No one's free for ${data.childName ? data.childName + "'s" : 'kids'} pickup at ${data.time} on ${data.day}. Need backup options?\n\nReply YES or GOT IT (I'll handle)`,
+  replyOptions: ['YES', 'GOT IT'],
   parseReply: (reply) => {
     const normalized = reply.trim().toUpperCase();
     if (normalized === 'YES' || normalized === 'Y') {
       return { action: 'need_backup', valid: true };
     }
-    if (normalized === 'HANDLE' || normalized === 'H' || normalized === 'NO') {
+    if (normalized === 'GOT IT' || normalized === 'HANDLE' || normalized === 'H' || normalized === 'NO') {
       return { action: 'will_handle', valid: true };
     }
     return { action: 'unknown', valid: false };
@@ -123,14 +127,14 @@ export const coverageGapTemplate: SMSTemplate = {
 export const loadImbalanceTemplate: SMSTemplate = {
   type: 'load_imbalance',
   generate: (data) =>
-    `📊 This week: You have ${data.count} events, ${data.partnerName} has ${data.count}. Want to rebalance?\n\nReply HELP to discuss or OK to acknowledge`,
+    `📊 Quick check: You've got ${data.count} things this week vs ${data.partnerName}'s ${data.count}. Worth rebalancing?\n\nReply HELP to discuss or OK if it's fine`,
   replyOptions: ['HELP', 'OK'],
   parseReply: (reply) => {
     const normalized = reply.trim().toUpperCase();
     if (normalized === 'HELP' || normalized === 'H') {
       return { action: 'discuss', valid: true };
     }
-    if (normalized === 'OK' || normalized === 'K' || normalized === 'FINE') {
+    if (normalized === 'OK' || normalized === 'K' || normalized === 'FINE' || normalized === 'GOOD') {
       return { action: 'acknowledge', valid: true };
     }
     return { action: 'unknown', valid: false };
@@ -144,14 +148,14 @@ export const loadImbalanceTemplate: SMSTemplate = {
 export const prepReminderTemplate: SMSTemplate = {
   type: 'prep_reminder',
   generate: (data) =>
-    `⚽ "${data.eventName}" is ${data.day}. ${data.action || 'Gear packed?'}\n\nReply DONE or REMIND (remind me tomorrow)`,
-  replyOptions: ['DONE', 'REMIND'],
+    `⚽ Quick heads up: "${data.eventName}" is ${data.day}. ${data.action || 'Everything packed and ready?'}\n\nReply DONE or REMIND ME tomorrow`,
+  replyOptions: ['DONE', 'REMIND ME'],
   parseReply: (reply) => {
     const normalized = reply.trim().toUpperCase();
-    if (normalized === 'DONE' || normalized === 'D' || normalized === 'YES') {
+    if (normalized === 'DONE' || normalized === 'D' || normalized === 'YES' || normalized === 'YEP') {
       return { action: 'mark_done', valid: true };
     }
-    if (normalized === 'REMIND' || normalized === 'R' || normalized === 'LATER') {
+    if (normalized === 'REMIND ME' || normalized === 'REMIND' || normalized === 'R' || normalized === 'LATER') {
       return { action: 'remind_later', valid: true };
     }
     return { action: 'unknown', valid: false };
@@ -165,7 +169,7 @@ export const prepReminderTemplate: SMSTemplate = {
 export const partnerUpdateTemplate: SMSTemplate = {
   type: 'partner_update',
   generate: (data) =>
-    `✓ ${data.partnerName} ${data.action}`,
+    `✓ FYI: ${data.partnerName} ${data.action}`,
   replyOptions: [],
   parseReply: () => ({ action: 'none', valid: true }),
 };

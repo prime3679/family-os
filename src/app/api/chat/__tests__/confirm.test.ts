@@ -18,6 +18,7 @@ vi.mock('@/lib/db', () => ({
     },
     familyMember: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
     partnerNudge: {
       create: vi.fn(),
@@ -25,11 +26,19 @@ vi.mock('@/lib/db', () => ({
     notificationLog: {
       create: vi.fn(),
     },
+    actionTrust: {
+      upsert: vi.fn(),
+      findUnique: vi.fn(),
+    },
   },
 }));
 
 vi.mock('@/lib/ritual/weekKey', () => ({
   getWeekKey: vi.fn(() => '2024-W52'),
+}));
+
+vi.mock('@/lib/calendar/write', () => ({
+  createGoogleCalendarEvent: vi.fn().mockResolvedValue('event-123'),
 }));
 
 import { POST } from '../confirm/route';
@@ -42,9 +51,10 @@ describe('POST /api/chat/confirm', () => {
     user: { findUnique: ReturnType<typeof vi.fn> };
     childProfile: { findFirst: ReturnType<typeof vi.fn> };
     task: { create: ReturnType<typeof vi.fn> };
-    familyMember: { findFirst: ReturnType<typeof vi.fn> };
+    familyMember: { findFirst: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn> };
     partnerNudge: { create: ReturnType<typeof vi.fn> };
     notificationLog: { create: ReturnType<typeof vi.fn> };
+    actionTrust: { upsert: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn> };
   };
 
   beforeEach(() => {
@@ -198,9 +208,13 @@ describe('POST /api/chat/confirm', () => {
         householdId: 'household1',
         household: { id: 'household1' },
       });
+      mockPrisma.familyMember.findUnique.mockResolvedValue({
+        userId: 'user1',
+        calendars: [{ googleCalendarId: 'calendar-123', name: 'Primary', included: true }],
+      });
     });
 
-    it('returns placeholder response for event creation', async () => {
+    it('creates event on Google Calendar', async () => {
       const request = new Request('http://localhost/api/chat/confirm', {
         method: 'POST',
         body: JSON.stringify({
@@ -209,7 +223,6 @@ describe('POST /api/chat/confirm', () => {
             title: 'Soccer practice',
             day: 'tue',
             time: '4:00 PM',
-            parent: 'parent_a',
           },
         }),
       });
@@ -220,7 +233,31 @@ describe('POST /api/chat/confirm', () => {
       const json = await response.json();
       expect(json.success).toBe(true);
       expect(json.message).toContain('Soccer practice');
-      expect(json.event.day).toBe('tue');
+    });
+
+    it('returns 400 when no calendar connected', async () => {
+      mockPrisma.familyMember.findUnique.mockResolvedValueOnce({
+        userId: 'user1',
+        calendars: [],
+      });
+
+      const request = new Request('http://localhost/api/chat/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'createEvent',
+          data: {
+            title: 'Soccer practice',
+            day: 'tue',
+            time: '4:00 PM',
+          },
+        }),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+
+      const json = await response.json();
+      expect(json.error).toContain('calendar');
     });
   });
 

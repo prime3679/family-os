@@ -13,6 +13,7 @@ export default function MobileNav({ familyName = "The Lumley Family" }: MobileNa
   const navLinks = [
     { href: '/app', label: 'Dashboard' },
     { href: '/app/chat', label: 'Chat' },
+    { href: '/app/activity', label: 'Activity' },
     { href: '/app/ritual', label: 'Deep Sync' },
     { href: '/app/week', label: 'Week' },
     { href: '/app/tasks', label: 'Tasks' },

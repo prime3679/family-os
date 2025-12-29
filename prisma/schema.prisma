@@ -34,6 +34,8 @@ model User {
   pendingActions         PendingAction[]
   // PRD 2: Email Intelligence
   gmailWatch             GmailWatch?
+  // Unified Conversation Model
+  conversations          Conversation[]
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 }
@@ -91,6 +93,8 @@ model Household {
   actionTrust     ActionTrust[]
   // PRD 2: Email Intelligence
   emailInsights   EmailInsight[]
+  // Unified Conversation Model
+  conversations   Conversation[]
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 }
@@ -359,24 +363,26 @@ model WeekSnapshot {
 
 // Proactive intelligence insights (SMS-first)
 model Insight {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
   householdId  String
-  type         String    // calendar_gap, conflict, coverage_gap, load_imbalance, prep_reminder
-  severity     String    // high, medium, low
+  type         String        // calendar_gap, conflict, coverage_gap, load_imbalance, prep_reminder
+  severity     String        // high, medium, low
   title        String
   description  String
-  smsMessage   String    // The SMS that was/will be sent
-  status       String    @default("pending") // pending, sent, resolved, dismissed
+  smsMessage   String        // The SMS that was/will be sent
+  status       String        @default("pending") // pending, sent, resolved, dismissed
   resolvedById String?
-  resolution   String?   // What action was taken
-  eventIds     String[]  // Related calendar event IDs
-  metadata     Json?     // Additional context data
+  resolution   String?       // What action was taken
+  eventIds     String[]      // Related calendar event IDs
+  metadata     Json?         // Additional context data
   sentAt       DateTime?
   resolvedAt   DateTime?
-  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  resolvedBy   User?     @relation("InsightResolver", fields: [resolvedById], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  resolvedBy   User?         @relation("InsightResolver", fields: [resolvedById], references: [id])
+  // Unified Conversation Model - optional backlink to conversation
+  conversation Conversation?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([householdId, status])
   @@index([householdId, type])
@@ -505,4 +511,79 @@ model EmailInsight {
   @@index([householdId, status])
   @@index([householdId, category])
   @@index([receivedAt])
+}
+
+// ============================================================================
+// Unified Conversation Model - Scout Memory System
+// ============================================================================
+
+// Core conversation thread - unified across SMS, Chat, Ritual
+model Conversation {
+  id               String                 @id @default(cuid())
+  householdId      String
+  userId           String                 // Who started this conversation
+
+  channel          String                 // "sms" | "chat" | "ritual"
+  status           String                 @default("open") // open | resolved | dismissed
+  topic            String?                // AI-inferred topic for display
+
+  // Linked entities
+  relatedInsightId String?                @unique
+  weekKey          String
+
+  // Timestamps
+  closedAt         DateTime?
+
+  // Relations
+  messages         Message[]
+  decisions        ConversationDecision[]
+
+  household        Household              @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  relatedInsight   Insight?               @relation(fields: [relatedInsightId], references: [id])
+
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([householdId, status])
+  @@index([householdId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// Individual messages in a conversation
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+
+  role           String       // "user" | "assistant" | "system"
+  content        String       @db.Text
+  channel        String       // Which channel this message came from (sms, chat, ritual)
+
+  // Tool execution tracking
+  toolCalls      Json?        // [{name, input, output, status}]
+
+  // Channel-specific metadata
+  metadata       Json?        // SMS: {from, twilioSid}, Chat: {}, etc.
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// Decisions made during conversations (for tracking resolutions)
+model ConversationDecision {
+  id             String       @id @default(cuid())
+  conversationId String
+
+  decisionType   String       // "conflict_resolution" | "task_assignment" | "schedule_change"
+  decisionKey    String       // conflictId, taskId, etc.
+  decisionValue  String       // The choice made
+  reasoning      String?      // AI explanation of why
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([decisionKey])
 }

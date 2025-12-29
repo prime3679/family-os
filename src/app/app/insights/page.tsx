@@ -53,15 +53,19 @@ export default function InsightsPage() {
       <header className="border-b border-border bg-surface px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-serif text-xl text-text-primary">Insights</h1>
+            <h1 className="font-serif text-xl text-text-primary">Scout&apos;s Findings</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              What FamilyOS has detected
+              Things I&apos;m watching for you
             </p>
           </div>
-          {totalActive > 0 && (
+          {totalActive > 0 ? (
             <div className="flex items-center gap-2 bg-accent-warm/20 text-accent-primary px-3 py-1.5 rounded-full">
               <span className="font-bold">{totalActive}</span>
-              <span className="text-sm">need attention</span>
+              <span className="text-sm">to review</span>
+            </div>
+          ) : !isLoading && insights.length === 0 && (
+            <div className="flex items-center gap-2 bg-green-100 text-green-700 px-3 py-1.5 rounded-full">
+              <span className="text-sm">✓ All clear!</span>
             </div>
           )}
         </div>
@@ -70,40 +74,45 @@ export default function InsightsPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-3xl">
-          {/* Info Banner (shown when empty) */}
+          {/* Celebration Banner (shown when all clear) */}
           {insights.length === 0 && !isLoading && !error && (
-            <div className="mb-6 bg-gradient-to-r from-accent-primary/10 to-accent-warm/10 rounded-2xl p-6 border border-accent-primary/20">
-              <h2 className="font-serif text-lg text-text-primary mb-2">
-                How Insights Work
-              </h2>
-              <p className="text-text-secondary text-sm leading-relaxed">
-                FamilyOS automatically analyzes your connected calendars to detect:
-              </p>
-              <ul className="mt-3 space-y-2 text-sm text-text-secondary">
-                <li className="flex items-center gap-2">
-                  <span>📅</span>
-                  <span><strong>Calendar Gaps:</strong> Events on one calendar but not the other</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span>⚠️</span>
-                  <span><strong>Conflicts:</strong> Overlapping events between parents</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span>🚨</span>
-                  <span><strong>Coverage Gaps:</strong> Times when no one is available</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span>📊</span>
-                  <span><strong>Load Imbalance:</strong> Uneven distribution of responsibilities</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span>⚽</span>
-                  <span><strong>Prep Reminders:</strong> Upcoming events needing preparation</span>
-                </li>
-              </ul>
-              <p className="mt-4 text-xs text-text-tertiary">
-                When SMS is enabled, you&apos;ll receive text messages about important insights with one-tap resolution.
-              </p>
+            <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-6 border border-green-200">
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-2">🎉</div>
+                <h2 className="font-serif text-lg text-text-primary">
+                  All clear for now!
+                </h2>
+                <p className="text-text-secondary text-sm mt-1">
+                  I&apos;m watching your calendars — I&apos;ll let you know when something needs attention.
+                </p>
+              </div>
+
+              <div className="border-t border-green-200 pt-4 mt-4">
+                <p className="text-sm font-medium text-text-primary mb-3">
+                  👀 What I look for:
+                </p>
+                <ul className="space-y-2 text-sm text-text-secondary">
+                  <li className="flex items-center gap-2">
+                    <span>📅</span>
+                    <span>Events missing from your calendar</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span>⚠️</span>
+                    <span>Scheduling conflicts between parents</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span>🚨</span>
+                    <span>Times when no one&apos;s available for pickup</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span>⚽</span>
+                    <span>Events coming up that need prep</span>
+                  </li>
+                </ul>
+                <p className="mt-4 text-xs text-text-tertiary">
+                  — Scout 🔍
+                </p>
+              </div>
             </div>
           )}
 

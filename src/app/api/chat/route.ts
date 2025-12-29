@@ -6,6 +6,13 @@ import { getWeekKey } from '@/lib/ritual/weekKey';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
 import { getAgentContext } from '@/lib/agent';
+import { fetchGoogleCalendarEvents, getWeekBoundaries, GoogleCalendarEvent } from '@/lib/calendar/google';
+import {
+  getOrCreateChatConversation,
+  addMessage,
+  getConversationMessages,
+  ToolCall,
+} from '@/lib/conversations';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -57,6 +64,11 @@ const draftEmailSchema = z.object({
     .describe('Brief explanation of why this email is being sent, for the user to review'),
 });
 
+const getConflictsSchema = z.object({
+  includeResolved: z.boolean().optional()
+    .describe('Whether to include resolved conflicts. Default is false (only active conflicts)'),
+});
+
 export async function POST(req: Request) {
   try {
     const session = await auth();
@@ -64,7 +76,7 @@ export async function POST(req: Request) {
       return new Response('Unauthorized', { status: 401 });
     }
 
-    const { messages } = await req.json();
+    const { messages, conversationId: requestedConversationId } = await req.json();
 
     // Fetch user's household data for context
     const user = await prisma.user.findUnique({
@@ -77,9 +89,23 @@ export async function POST(req: Request) {
               where: { weekKey: getWeekKey() },
               take: 10,
             },
+            insights: {
+              where: {
+                status: { in: ['pending', 'sent'] },
+                type: 'conflict',
+              },
+              take: 10,
+              orderBy: { createdAt: 'desc' },
+            },
           },
         },
-        familyMember: true,
+        familyMember: {
+          include: {
+            calendars: {
+              where: { included: true },
+            },
+          },
+        },
       },
     });
 
@@ -121,6 +147,18 @@ export async function POST(req: Request) {
       agentMemory,
     };
 
+    // Get or create conversation for persistence
+    let conversationId = requestedConversationId;
+    if (!conversationId && user?.householdId) {
+      conversationId = await getOrCreateChatConversation(session.user.id, user.householdId);
+    }
+
+    // Get the latest user message to persist
+    const latestUserMessage = messages[messages.length - 1];
+    if (conversationId && latestUserMessage?.role === 'user') {
+      await addMessage(conversationId, 'user', latestUserMessage.content, 'chat');
+    }
+
     // Define tools using the AI SDK tool() helper
     const tools = {
       createTask: tool({
@@ -136,12 +174,77 @@ export async function POST(req: Request) {
         inputSchema: queryWeekSchema,
         execute: async ({ day }) => {
           const tasks = user?.household?.tasks || [];
+          const connectedCalendars = user?.familyMember?.calendars || [];
+
+          // Get week boundaries
+          const { start: weekStart, end: weekEnd } = getWeekBoundaries();
+
+          // Day map for filtering
+          const dayMap: Record<string, number> = {
+            'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0
+          };
+
+          // Determine time range
+          let timeMin = weekStart;
+          let timeMax = weekEnd;
+
+          if (day) {
+            const targetDay = dayMap[day];
+            const dayDate = new Date(weekStart);
+            const daysToAdd = targetDay === 0 ? 6 : targetDay - 1;
+            dayDate.setDate(weekStart.getDate() + daysToAdd);
+            timeMin = new Date(dayDate);
+            timeMin.setHours(0, 0, 0, 0);
+            timeMax = new Date(dayDate);
+            timeMax.setHours(23, 59, 59, 999);
+          }
+
+          // Fetch events from all connected calendars
+          const allEvents: Array<{
+            id: string;
+            title: string;
+            start: string;
+            end: string;
+            location?: string;
+            calendarName: string;
+          }> = [];
+
+          for (const calendar of connectedCalendars) {
+            try {
+              const events = await fetchGoogleCalendarEvents(
+                session.user.id,
+                calendar.googleCalendarId,
+                timeMin,
+                timeMax
+              );
+
+              for (const event of events) {
+                if (event.summary) {
+                  allEvents.push({
+                    id: event.id,
+                    title: event.summary,
+                    start: event.start?.dateTime || event.start?.date || '',
+                    end: event.end?.dateTime || event.end?.date || '',
+                    location: event.location,
+                    calendarName: calendar.name,
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`Failed to fetch events from calendar ${calendar.name}:`, error);
+            }
+          }
+
+          // Sort events by start time
+          allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
           return {
             message: day
               ? `Here's what's happening on ${day.charAt(0).toUpperCase() + day.slice(1)}`
               : `Here's your week overview`,
+            events: allEvents,
             tasks: tasks.map(t => ({ title: t.title, status: t.status, assignedTo: t.assignedTo })),
-            eventCount: 0,
+            eventCount: allEvents.length,
           };
         },
       }),
@@ -157,6 +260,33 @@ export async function POST(req: Request) {
         description: 'Draft and send an email on behalf of the user. Use this when the user wants to send an email, such as notifying school of absence, thanking someone, or communicating with teachers/coaches. The user will review and approve before sending.',
         inputSchema: draftEmailSchema,
       }),
+      getConflicts: tool({
+        description: 'Get schedule conflicts and issues detected by the family assistant. Use this when the user asks about conflicts, scheduling problems, or what needs attention.',
+        inputSchema: getConflictsSchema,
+        execute: async ({ includeResolved }) => {
+          const insights = user?.household?.insights || [];
+
+          // Filter based on includeResolved
+          const relevantInsights = includeResolved
+            ? insights
+            : insights.filter(i => i.status === 'pending' || i.status === 'sent');
+
+          return {
+            message: relevantInsights.length > 0
+              ? `Found ${relevantInsights.length} scheduling ${relevantInsights.length === 1 ? 'issue' : 'issues'}`
+              : 'No scheduling conflicts detected',
+            conflicts: relevantInsights.map(i => ({
+              id: i.id,
+              type: i.type,
+              severity: i.severity,
+              title: i.title,
+              description: i.description,
+              status: i.status,
+            })),
+            conflictCount: relevantInsights.length,
+          };
+        },
+      }),
     };
 
     const result = streamText({
@@ -166,12 +296,16 @@ export async function POST(req: Request) {
       tools,
     });
 
-    // Create a custom response that includes tool call markers
+    // Create a custom response that includes tool call markers and persists the response
     const encoder = new TextEncoder();
+    let fullResponse = '';
+    const collectedToolCalls: ToolCall[] = [];
+
     const stream = new ReadableStream({
       async start(controller) {
         try {
           for await (const chunk of result.textStream) {
+            fullResponse += chunk;
             controller.enqueue(encoder.encode(chunk));
           }
 
@@ -183,7 +317,25 @@ export async function POST(req: Request) {
               // Emit tool call marker
               const marker = `[TOOL:${toolCall.toolName}:${JSON.stringify(toolCall.input)}]`;
               controller.enqueue(encoder.encode(marker));
+
+              // Collect tool calls for persistence
+              collectedToolCalls.push({
+                name: toolCall.toolName,
+                input: toolCall.input as Record<string, unknown>,
+                status: 'pending',
+              });
             }
+          }
+
+          // Persist assistant response to conversation
+          if (conversationId && fullResponse.trim()) {
+            await addMessage(
+              conversationId,
+              'assistant',
+              fullResponse,
+              'chat',
+              collectedToolCalls.length > 0 ? { toolCalls: collectedToolCalls } : undefined
+            );
           }
 
           controller.close();
@@ -197,6 +349,7 @@ export async function POST(req: Request) {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
+        'X-Conversation-Id': conversationId || '',
       },
     });
   } catch (error) {

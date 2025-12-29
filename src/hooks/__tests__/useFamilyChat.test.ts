@@ -8,19 +8,34 @@ describe('useFamilyChat', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', mockFetch);
     mockFetch.mockReset();
+    // Default: no existing conversation history
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('initializes with empty state', () => {
+  it('initializes with empty state', async () => {
     const { result } = renderHook(() => useFamilyChat());
 
     expect(result.current.messages).toEqual([]);
     expect(result.current.input).toBe('');
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeUndefined();
+
+    // Wait for history loading to complete
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
   });
 
   it('updates input when setInput is called', () => {
@@ -36,19 +51,46 @@ describe('useFamilyChat', () => {
   it('does not submit when input is empty', async () => {
     const { result } = renderHook(() => useFamilyChat());
 
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
+
+    // Clear the history call
+    const historyCalls = mockFetch.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/api/conversations'));
+
     await act(async () => {
       await result.current.submit();
     });
 
-    expect(mockFetch).not.toHaveBeenCalled();
+    // Should only have made the conversations fetch, no chat call
+    expect(mockFetch).toHaveBeenCalledTimes(historyCalls.length);
     expect(result.current.messages).toEqual([]);
   });
 
   it('does not submit when already loading', async () => {
-    // Create a mock that never resolves to simulate loading state
-    mockFetch.mockImplementation(() => new Promise(() => {}));
+    let historyResolved = false;
+
+    // Mock conversations first, then chat never resolves
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        historyResolved = true;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      // Chat call never resolves
+      return new Promise(() => {});
+    });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(historyResolved).toBe(true);
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('First message');
@@ -70,8 +112,8 @@ describe('useFamilyChat', () => {
       await result.current.submit();
     });
 
-    // Should only have called fetch once
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    // Should have called fetch twice: once for conversations, once for chat
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it('adds user message and makes API call on submit', async () => {
@@ -85,14 +127,26 @@ describe('useFamilyChat', () => {
         .mockResolvedValueOnce({ done: true, value: undefined }),
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      body: {
-        getReader: () => mockReader,
-      },
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ 'X-Conversation-Id': 'conv_123' }),
+        body: { getReader: () => mockReader },
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Hi there');
@@ -118,12 +172,25 @@ describe('useFamilyChat', () => {
   });
 
   it('handles API errors', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      statusText: 'Internal Server Error',
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        statusText: 'Internal Server Error',
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Test message');
@@ -156,14 +223,26 @@ describe('useFamilyChat', () => {
         .mockResolvedValueOnce({ done: true, value: undefined }),
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      body: {
-        getReader: () => mockReader,
-      },
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ 'X-Conversation-Id': 'conv_123' }),
+        body: { getReader: () => mockReader },
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Create a task');
@@ -201,14 +280,34 @@ describe('useFamilyChat', () => {
         .mockResolvedValueOnce({ done: true, value: undefined }),
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      body: {
-        getReader: () => mockReader,
-      },
+    let chatCalled = false;
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      if (url.includes('/api/chat/confirm')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ success: true }),
+        });
+      }
+      chatCalled = true;
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ 'X-Conversation-Id': 'conv_123' }),
+        body: { getReader: () => mockReader },
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Create task');
@@ -219,16 +318,11 @@ describe('useFamilyChat', () => {
     });
 
     await waitFor(() => {
+      expect(chatCalled).toBe(true);
       expect(result.current.isLoading).toBe(false);
     });
 
     const messageId = result.current.messages[1].id;
-
-    // Mock confirm API call
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ success: true }),
-    });
 
     await act(async () => {
       await result.current.confirmTool(messageId, 'createTask');
@@ -251,14 +345,34 @@ describe('useFamilyChat', () => {
         .mockResolvedValueOnce({ done: true, value: undefined }),
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      body: {
-        getReader: () => mockReader,
-      },
+    let confirmCalled = false;
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      if (url.includes('/api/chat/confirm')) {
+        confirmCalled = true;
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ error: 'Failed' }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ 'X-Conversation-Id': 'conv_123' }),
+        body: { getReader: () => mockReader },
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Create task');
@@ -274,17 +388,12 @@ describe('useFamilyChat', () => {
 
     const messageId = result.current.messages[1].id;
 
-    // Mock confirm API error
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ error: 'Failed' }),
-    });
-
     await act(async () => {
       await result.current.confirmTool(messageId, 'createTask');
     });
 
     await waitFor(() => {
+      expect(confirmCalled).toBe(true);
       const toolState = result.current.messages[1].toolInvocations?.[0].state;
       expect(toolState).toBe('error');
     });
@@ -301,14 +410,26 @@ describe('useFamilyChat', () => {
         .mockResolvedValueOnce({ done: true, value: undefined }),
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      body: {
-        getReader: () => mockReader,
-      },
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ 'X-Conversation-Id': 'conv_123' }),
+        body: { getReader: () => mockReader },
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Create task');
@@ -335,13 +456,28 @@ describe('useFamilyChat', () => {
     const abortError = new Error('Aborted');
     abortError.name = 'AbortError';
 
-    mockFetch.mockImplementation(() => {
+    let historyResolved = false;
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        historyResolved = true;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      // Chat call never resolves (simulates abort)
       return new Promise((_, reject) => {
         setTimeout(() => reject(abortError), 100);
       });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(historyResolved).toBe(true);
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Hello');
@@ -370,14 +506,26 @@ describe('useFamilyChat', () => {
         .mockResolvedValueOnce({ done: true, value: undefined }),
     };
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      body: {
-        getReader: () => mockReader,
-      },
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/conversations')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [] }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        headers: new Headers({ 'X-Conversation-Id': 'conv_123' }),
+        body: { getReader: () => mockReader },
+      });
     });
 
     const { result } = renderHook(() => useFamilyChat());
+
+    // Wait for history loading
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
 
     act(() => {
       result.current.setInput('Test message');
@@ -387,15 +535,20 @@ describe('useFamilyChat', () => {
       await result.current.submit();
     });
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/chat', {
+    // Find the chat API call (not the conversations call)
+    const chatCall = mockFetch.mock.calls.find((call: unknown[]) => call[0] === '/api/chat');
+    expect(chatCall).toBeDefined();
+    expect(chatCall![1]).toEqual({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: 'Test message' }],
-      }),
+      body: expect.stringContaining('"messages"'),
       signal: expect.any(AbortSignal),
     });
+
+    // Verify the message format
+    const body = JSON.parse(chatCall![1].body);
+    expect(body.messages).toEqual([{ role: 'user', content: 'Test message' }]);
   });
 });

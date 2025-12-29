@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 interface ToolInvocation {
   toolName: string;
@@ -15,12 +15,77 @@ interface Message {
   toolInvocations?: ToolInvocation[];
 }
 
+interface PersistedMessage {
+  id: string;
+  role: string;
+  content: string;
+  toolCalls?: Array<{
+    name: string;
+    input: Record<string, unknown>;
+    status: string;
+  }>;
+  createdAt: string;
+}
+
 export function useFamilyChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState<Error | undefined>();
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Load conversation history on mount
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        // Find most recent open chat conversation
+        const res = await fetch('/api/conversations?channel=chat&status=open&limit=1');
+        if (!res.ok) {
+          setIsLoadingHistory(false);
+          return;
+        }
+
+        const { conversations } = await res.json();
+        if (conversations.length === 0) {
+          setIsLoadingHistory(false);
+          return;
+        }
+
+        const convId = conversations[0].id;
+        setConversationId(convId);
+
+        // Load full conversation with messages
+        const convRes = await fetch(`/api/conversations/${convId}`);
+        if (!convRes.ok) {
+          setIsLoadingHistory(false);
+          return;
+        }
+
+        const { conversation } = await convRes.json();
+        if (conversation?.messages) {
+          const loadedMessages: Message[] = conversation.messages.map((m: PersistedMessage) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            toolInvocations: m.toolCalls?.map((tc) => ({
+              toolName: tc.name,
+              args: tc.input,
+              state: tc.status === 'executed' ? 'confirmed' : tc.status as 'pending' | 'confirmed' | 'cancelled' | 'error',
+            })),
+          }));
+          setMessages(loadedMessages);
+        }
+      } catch (err) {
+        console.error('Failed to load chat history:', err);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    }
+
+    loadHistory();
+  }, []);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
@@ -65,12 +130,19 @@ export function useFamilyChat() {
             role: m.role,
             content: m.content,
           })),
+          conversationId,
         }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
+      }
+
+      // Capture conversation ID from response header
+      const responseConversationId = response.headers.get('X-Conversation-Id');
+      if (responseConversationId && !conversationId) {
+        setConversationId(responseConversationId);
       }
 
       const reader = response.body?.getReader();
@@ -122,7 +194,7 @@ export function useFamilyChat() {
         setIsLoading(false);
       }
     }
-  }, [input, messages, isLoading]);
+  }, [input, messages, isLoading, conversationId]);
 
   const confirmTool = useCallback(async (messageId: string, toolName: string) => {
     // Find the message and tool invocation
@@ -200,6 +272,12 @@ export function useFamilyChat() {
     await submit();
   }, [messages, submit]);
 
+  // Start a new conversation (closes current one)
+  const startNewConversation = useCallback(() => {
+    setMessages([]);
+    setConversationId(null);
+  }, []);
+
   return {
     messages,
     input,
@@ -207,10 +285,13 @@ export function useFamilyChat() {
     handleInputChange,
     submit,
     isLoading,
+    isLoadingHistory,
     error,
     reload,
     stop,
     confirmTool,
     cancelTool,
+    conversationId,
+    startNewConversation,
   };
 }

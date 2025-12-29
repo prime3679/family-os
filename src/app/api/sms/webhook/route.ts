@@ -11,6 +11,13 @@ import { parseIncomingSMS, sendSMS, parseReply, type InsightType } from '@/lib/s
 import { fetchGoogleCalendarEvents, getWeekBoundaries } from '@/lib/calendar/google';
 import { createGoogleCalendarEvent } from '@/lib/calendar/write';
 import { getWeekKey } from '@/lib/ritual/weekKey';
+import {
+  createSMSConversation,
+  findConversationByInsight,
+  addMessage,
+  closeConversation,
+  recordDecision,
+} from '@/lib/conversations';
 
 // Twilio sends form-encoded data
 export async function POST(request: NextRequest) {
@@ -52,19 +59,38 @@ export async function POST(request: NextRequest) {
     });
 
     let responseMessage: string;
+    let conversationId: string | null = null;
 
     if (!recentInsight) {
       // No pending insight - treat as general message
       responseMessage = await handleGeneralMessage(incoming.body, user);
     } else {
+      // Find or create conversation for this insight
+      conversationId = await findConversationByInsight(recentInsight.id);
+      if (!conversationId && user.householdId) {
+        conversationId = await createSMSConversation(user.id, user.householdId, recentInsight.id);
+      }
+
+      // Store user's SMS reply in conversation
+      if (conversationId) {
+        await addMessage(conversationId, 'user', incoming.body, 'sms', {
+          metadata: { from: incoming.from, twilioSid: incoming.messageSid },
+        });
+      }
+
       // Parse reply based on insight type
       const parsed = parseReply(recentInsight.type as InsightType, incoming.body);
 
       if (parsed.valid) {
-        responseMessage = await handleInsightReply(recentInsight, parsed.action, user);
+        responseMessage = await handleInsightReply(recentInsight, parsed.action, user, conversationId);
       } else {
         responseMessage = `I didn't understand "${incoming.body}". Try: ${getHelpText(recentInsight.type as InsightType)}`;
       }
+    }
+
+    // Store Scout's response in conversation
+    if (conversationId) {
+      await addMessage(conversationId, 'assistant', responseMessage, 'sms');
     }
 
     // Return TwiML response
@@ -91,7 +117,8 @@ export async function POST(request: NextRequest) {
 async function handleInsightReply(
   insight: { id: string; type: string; householdId: string; metadata: unknown },
   action: string,
-  user: { id: string; name: string | null; householdId: string | null; familyMember: { displayName: string } | null }
+  user: { id: string; name: string | null; householdId: string | null; familyMember: { displayName: string } | null },
+  conversationId: string | null
 ): Promise<string> {
   const displayName = user.familyMember?.displayName || user.name || 'Someone';
 
@@ -105,6 +132,17 @@ async function handleInsightReply(
       resolvedAt: new Date(),
     },
   });
+
+  // Record the decision in conversation
+  if (conversationId) {
+    await recordDecision(
+      conversationId,
+      'insight_resolution',
+      insight.id,
+      action,
+      `User resolved ${insight.type} insight via SMS`
+    );
+  }
 
   // Handle different actions
   switch (action) {
@@ -176,12 +214,17 @@ async function handleInsightReply(
             createdBy: user.id,
           },
         });
+        // Keep conversation open for reminder follow-up
         return "I'll remind you tomorrow. Added to your tasks.";
       } catch {
         return "I'll remind you tomorrow.";
       }
 
     default:
+      // Close the conversation when insight is resolved
+      if (conversationId) {
+        await closeConversation(conversationId, 'resolved');
+      }
       return "Got it!";
   }
 }

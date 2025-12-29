@@ -96,6 +96,14 @@ export default function Dashboard() {
   const [year, week] = data.weekKey.split('-W');
   const weekDisplay = `Week ${week}, ${year}`;
 
+  // Determine Scout's mood for the week
+  const totalIssues = data.stats.conflicts + data.stats.activeInsights;
+  const scoutMood = totalIssues === 0
+    ? { emoji: '🎯', message: 'Looking good this week!' }
+    : totalIssues <= 2
+      ? { emoji: '👀', message: `${totalIssues} thing${totalIssues !== 1 ? 's' : ''} to review` }
+      : { emoji: '🏃', message: 'Busy week — let me help!' };
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -104,6 +112,10 @@ export default function Dashboard() {
           <div>
             <h1 className="font-serif text-xl text-text-primary">Dashboard</h1>
             <p className="mt-1 text-sm text-text-secondary">{weekDisplay}</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-text-secondary">
+            <span className="text-lg">{scoutMood.emoji}</span>
+            <span>{scoutMood.message}</span>
           </div>
         </div>
       </header>
@@ -205,7 +217,7 @@ export default function Dashboard() {
               </div>
               {data.tasks.length === 0 ? (
                 <p className="text-sm text-text-secondary py-4 text-center">
-                  No pending tasks
+                  ✓ All caught up!
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -237,7 +249,7 @@ export default function Dashboard() {
               </div>
               {data.insights.length === 0 ? (
                 <p className="text-sm text-text-secondary py-4 text-center">
-                  No active insights
+                  🎯 Nothing to flag — all clear!
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -259,7 +271,7 @@ export default function Dashboard() {
           <Card variant="warm">
             <h2 className="font-serif text-lg text-text-primary mb-4">Quick Actions</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <QuickActionButton href="/app/chat" icon="💬" label="Chat with AI" />
+              <QuickActionButton href="/app/chat" icon="🔍" label="Chat with Scout" />
               <QuickActionButton href="/app/week" icon="📅" label="View Week" />
               <QuickActionButton href="/app/tasks" icon="✓" label="Manage Tasks" />
               <QuickActionButton href="/app/children" icon="👶" label="Kids" />

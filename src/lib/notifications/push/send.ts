@@ -175,6 +175,39 @@ export async function sendNudgePush({
 }
 
 /**
+ * Send daily briefing push notification
+ */
+export async function sendDailyBriefingPush({
+  toUserId,
+  eventCount,
+}: {
+  toUserId: string;
+  eventCount: number;
+}): Promise<SendResult> {
+  const APP_URL_LOCAL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+  const payload: PushPayload = {
+    title: 'Daily Briefing',
+    body: eventCount > 0
+      ? `${eventCount} event${eventCount > 1 ? 's' : ''} today. Tap to see details.`
+      : 'No events today. Enjoy your day!',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    tag: 'daily-briefing',
+    data: {
+      url: `${APP_URL_LOCAL}/app/week`,
+      type: 'daily_briefing',
+    },
+    actions: [
+      { action: 'open', title: 'View' },
+      { action: 'dismiss', title: 'Later' },
+    ],
+  };
+
+  return sendWithChecks(toUserId, 'pushEnabled', payload, 'push_daily_briefing');
+}
+
+/**
  * Send insight push notification
  * Used by the intelligence engine when a new insight is detected
  */

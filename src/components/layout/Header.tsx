@@ -56,6 +56,7 @@ export default function Header({ familyName = "Your Family", showNav = true }: H
           {showNav && (
             <nav className="hidden md:flex items-center gap-2">
               <NavLink href="/app/chat">Chat</NavLink>
+              <NavLink href="/app/activity">Activity</NavLink>
               <NavLink href="/app/ritual">Deep Sync</NavLink>
               <NavLink href="/app/week">Week</NavLink>
               <NavLink href="/app/tasks">Tasks</NavLink>
