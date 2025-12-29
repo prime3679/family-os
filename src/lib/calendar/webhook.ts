@@ -304,3 +304,28 @@ export async function registerAllMissingChannels(): Promise<{
 
   return result;
 }
+
+/**
+ * Renew all expiring channels (call from cron job)
+ */
+export async function renewExpiringChannels(): Promise<{
+  renewed: number;
+  failed: number;
+  errors: string[];
+}> {
+  const result = { renewed: 0, failed: 0, errors: [] as string[] };
+
+  const expiringChannels = await getExpiringChannels();
+
+  for (const channel of expiringChannels) {
+    const renewResult = await renewWebhookChannel(channel.channelId);
+    if (renewResult.success) {
+      result.renewed++;
+    } else {
+      result.failed++;
+      result.errors.push(`Channel ${channel.channelId}: ${renewResult.error}`);
+    }
+  }
+
+  return result;
+}
