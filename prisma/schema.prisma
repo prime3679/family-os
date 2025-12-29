@@ -30,6 +30,10 @@ model User {
   nudgesSent             PartnerNudge[]          @relation("NudgeSent")
   nudgesReceived         PartnerNudge[]          @relation("NudgeReceived")
   insightsResolved       Insight[]               @relation("InsightResolver")
+  // PRD 3: Agent Core
+  pendingActions         PendingAction[]
+  // PRD 2: Email Intelligence
+  gmailWatch             GmailWatch?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
 }
@@ -81,6 +85,12 @@ model Household {
   weekSnapshots   WeekSnapshot[]
   insights        Insight[]
   caretakerLinks  CaretakerAccess[]
+  // PRD 3: Agent Core
+  agentMemories   AgentMemory[]
+  pendingActions  PendingAction[]
+  actionTrust     ActionTrust[]
+  // PRD 2: Email Intelligence
+  emailInsights   EmailInsight[]
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 }
@@ -136,10 +146,30 @@ model ConnectedCalendar {
   included         Boolean      @default(true)
   lastSyncedAt     DateTime?
   familyMember     FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  webhookChannels  CalendarWebhookChannel[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
   @@unique([familyMemberId, googleCalendarId])
+}
+
+// Real-time calendar webhook channels (Google Calendar Push Notifications)
+model CalendarWebhookChannel {
+  id                  String            @id @default(cuid())
+  connectedCalendarId String
+  channelId           String            @unique  // UUID we generate for Google watch API
+  resourceId          String            // Google's resource ID returned from watch
+  expiration          DateTime          // Channel expiration (max 7 days from Google)
+  syncToken           String?           // For incremental sync of changed events
+  status              String            @default("active") // active, expired, error
+  lastNotificationAt  DateTime?         // Last time we received a webhook notification
+  connectedCalendar   ConnectedCalendar @relation(fields: [connectedCalendarId], references: [id], onDelete: Cascade)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([channelId])
+  @@index([expiration])
+  @@index([status])
 }
 
 // Ritual state persistence
@@ -369,4 +399,110 @@ model CaretakerAccess {
 
   @@index([token])
   @@index([householdId])
+}
+
+// ============================================================================
+// PRD 3: Agent Core - Memory, Workflows, Trust
+// ============================================================================
+
+// Agent Memory - stores preferences, patterns, learned behaviors
+model AgentMemory {
+  id          String    @id @default(cuid())
+  householdId String
+  type        String    // preference, pattern, feedback, context
+  key         String    // e.g., "notification_style", "busy_days", "soccer_practice"
+  value       Json      // Flexible storage for any data structure
+  confidence  Float     @default(1.0) // How confident are we in this memory
+  source      String    // user_explicit, inferred, action_outcome
+  expiresAt   DateTime? // For short-term memory (e.g., conversation context)
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([householdId, type, key])
+  @@index([householdId, type])
+  @@index([expiresAt])
+}
+
+// Pending Actions - workflow state for tool confirmations requiring approval
+model PendingAction {
+  id          String    @id @default(cuid())
+  householdId String
+  userId      String    // Who initiated the action
+  actionType  String    // createEvent, createTask, notifyPartner, draftEmail, swapEvents
+  actionData  Json      // The parameters for the action
+  status      String    @default("pending") // pending, approved, rejected, executed, failed, expired
+  riskLevel   String    // low, medium, high, critical
+  reason      String?   // AI's explanation for suggesting this action
+  expiresAt   DateTime  // Auto-expire old pending actions
+  executedAt  DateTime?
+  outcome     Json?     // Result of execution (success details or error)
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([householdId, status])
+  @@index([userId, status])
+  @@index([expiresAt])
+}
+
+// Action Trust - per-action type trust levels (for auto-approval learning)
+model ActionTrust {
+  id           String    @id @default(cuid())
+  householdId  String
+  actionType   String    // createEvent, createTask, notifyPartner, etc.
+  successCount Int       @default(0) // Times this action succeeded
+  failureCount Int       @default(0) // Times this action failed
+  rejectCount  Int       @default(0) // Times user rejected this action
+  lastUsedAt   DateTime?
+  autoApprove  Boolean   @default(false) // User opted into auto-approve for this action
+  household    Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([householdId, actionType])
+}
+
+// ============================================================================
+// PRD 2: Email Intelligence - Gmail integration
+// ============================================================================
+
+// Gmail Watch - tracks push notification channels for Gmail
+model GmailWatch {
+  id         String    @id @default(cuid())
+  userId     String    @unique
+  email      String    // The watched email address (e.g., lumley-family@gmail.com)
+  historyId  String?   // Gmail's history ID for incremental sync
+  expiration DateTime? // Watch expiration (Gmail watches last ~7 days)
+  status     String    @default("pending") // pending, active, expired, error
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+// Email Insight - AI-analyzed emails that are family-relevant
+model EmailInsight {
+  id             String    @id @default(cuid())
+  householdId    String
+  gmailMessageId String    @unique // Gmail's message ID for deduplication
+  threadId       String?   // Gmail thread ID for grouping
+  from           String    // Sender email/name
+  subject        String
+  snippet        String?   // Preview text
+  receivedAt     DateTime  // When the email was received
+  category       String    // school, medical, activities, logistics, social, spam
+  relevanceScore Float     // 0-1 family relevance score
+  summary        String?   // AI-generated summary
+  actionItems    Json?     // Extracted action items [{text, dueDate}]
+  extractedDates Json?     // Dates mentioned in the email
+  status         String    @default("unread") // unread, read, actioned, archived
+  insightId      String?   // Link to created Insight (if converted)
+  household      Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([householdId, status])
+  @@index([householdId, category])
+  @@index([receivedAt])
 }

@@ -55,11 +55,11 @@ export default function Header({ familyName = "Your Family", showNav = true }: H
           {/* Desktop Navigation */}
           {showNav && (
             <nav className="hidden md:flex items-center gap-2">
+              <NavLink href="/app/chat">Chat</NavLink>
               <NavLink href="/app/ritual">Deep Sync</NavLink>
               <NavLink href="/app/week">Week</NavLink>
               <NavLink href="/app/tasks">Tasks</NavLink>
               <NavLink href="/app/insights">Insights</NavLink>
-              <NavLink href="/app/analytics">Analytics</NavLink>
               <NavLink href="/app/settings">Settings</NavLink>
             </nav>
           )}

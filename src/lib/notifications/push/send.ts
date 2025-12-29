@@ -173,3 +173,52 @@ export async function sendNudgePush({
 
   return sendWithChecks(toUserId, 'pushNudge', payload, 'push_nudge');
 }
+
+/**
+ * Send insight push notification
+ * Used by the intelligence engine when a new insight is detected
+ */
+export async function sendInsightPush({
+  toUserId,
+  insightType,
+  title,
+  body,
+  insightId,
+}: {
+  toUserId: string;
+  insightType: string;
+  title: string;
+  body: string;
+  insightId: string;
+}): Promise<SendResult> {
+  // Get emoji for insight type
+  const typeEmojis: Record<string, string> = {
+    calendar_gap: '📅',
+    conflict: '⚠️',
+    coverage_gap: '🚨',
+    load_imbalance: '📊',
+    prep_reminder: '⚽',
+  };
+  const emoji = typeEmojis[insightType] || '💡';
+
+  const payload: PushPayload = {
+    title: `${emoji} ${title}`,
+    body: body.length > 100 ? body.slice(0, 97) + '...' : body,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/badge-72x72.png',
+    tag: `insight-${insightType}-${insightId}`,
+    data: {
+      url: `${APP_URL}/app/insights`,
+      type: 'insight',
+      insightId,
+      insightType,
+    },
+    actions: [
+      { action: 'open', title: 'View' },
+      { action: 'dismiss', title: 'Later' },
+    ],
+  };
+
+  // Use pushEnabled as generic check (insights are always important)
+  return sendWithChecks(toUserId, 'pushEnabled', payload, 'push_insight');
+}

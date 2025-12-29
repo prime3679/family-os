@@ -11,11 +11,12 @@ export default function MobileNav({ familyName = "The Lumley Family" }: MobileNa
   const [isOpen, setIsOpen] = useState(false);
 
   const navLinks = [
+    { href: '/app', label: 'Dashboard' },
+    { href: '/app/chat', label: 'Chat' },
     { href: '/app/ritual', label: 'Deep Sync' },
     { href: '/app/week', label: 'Week' },
     { href: '/app/tasks', label: 'Tasks' },
     { href: '/app/insights', label: 'Insights' },
-    { href: '/app/analytics', label: 'Analytics' },
     { href: '/app/settings', label: 'Settings' },
   ];
 

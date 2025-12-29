@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { randomUUID } from 'crypto';
 import { prisma } from '../db';
 
 // Types for Google Calendar responses
@@ -158,4 +159,225 @@ export function getWeekBoundaries(date: Date = new Date()): { start: Date; end: 
   end.setHours(0, 0, 0, 0);
 
   return { start, end };
+}
+
+// ============================================================================
+// Webhook / Push Notifications API
+// ============================================================================
+
+export interface WatchChannelResult {
+  channelId: string;
+  resourceId: string;
+  expiration: Date;
+}
+
+/**
+ * Register a webhook channel for a Google Calendar
+ * Google will send push notifications to our webhook endpoint when events change
+ * Channels expire after max 7 days (Google's limit)
+ */
+export async function registerWebhookChannel(
+  userId: string,
+  calendarId: string
+): Promise<WatchChannelResult> {
+  const auth = await getOAuth2Client(userId);
+  const calendar = google.calendar({ version: 'v3', auth });
+
+  // Generate unique channel ID
+  const channelId = randomUUID();
+
+  // Webhook URL - must be HTTPS and publicly accessible
+  const webhookUrl = `${process.env.NEXTAUTH_URL}/api/calendar/webhook`;
+
+  // Max expiration is 7 days from now (Google's limit)
+  const expirationMs = Date.now() + 7 * 24 * 60 * 60 * 1000;
+
+  const response = await calendar.events.watch({
+    calendarId,
+    requestBody: {
+      id: channelId,
+      type: 'web_hook',
+      address: webhookUrl,
+      expiration: String(expirationMs),
+    },
+  });
+
+  if (!response.data.resourceId || !response.data.expiration) {
+    throw new Error('Failed to register webhook channel: missing response data');
+  }
+
+  return {
+    channelId,
+    resourceId: response.data.resourceId,
+    expiration: new Date(parseInt(response.data.expiration)),
+  };
+}
+
+/**
+ * Stop/unregister a webhook channel
+ * Call this when calendar is disconnected or channel needs to be replaced
+ */
+export async function unregisterWebhookChannel(
+  userId: string,
+  channelId: string,
+  resourceId: string
+): Promise<void> {
+  const auth = await getOAuth2Client(userId);
+  const calendar = google.calendar({ version: 'v3', auth });
+
+  await calendar.channels.stop({
+    requestBody: {
+      id: channelId,
+      resourceId: resourceId,
+    },
+  });
+}
+
+export interface IncrementalSyncResult {
+  events: GoogleCalendarEvent[];
+  nextSyncToken: string;
+  isFullSync: boolean;
+}
+
+/**
+ * Fetch events using incremental sync
+ * Uses syncToken to only get events that changed since last sync
+ * If syncToken is invalid/expired, falls back to full sync
+ */
+export async function fetchEventsIncremental(
+  userId: string,
+  calendarId: string,
+  syncToken?: string | null
+): Promise<IncrementalSyncResult> {
+  const auth = await getOAuth2Client(userId);
+  const calendar = google.calendar({ version: 'v3', auth });
+
+  let isFullSync = false;
+  let allEvents: GoogleCalendarEvent[] = [];
+  let pageToken: string | undefined;
+  let nextSyncToken: string | undefined;
+
+  try {
+    // Try incremental sync with syncToken
+    if (syncToken) {
+      const response = await calendar.events.list({
+        calendarId,
+        syncToken,
+        showDeleted: true, // Include deleted events to track removals
+      });
+
+      const items = response.data.items || [];
+      allEvents = items.map(mapGoogleEventToInternal);
+      nextSyncToken = response.data.nextSyncToken || undefined;
+
+      // Handle pagination for large changes
+      pageToken = response.data.nextPageToken || undefined;
+      while (pageToken) {
+        const pageResponse = await calendar.events.list({
+          calendarId,
+          syncToken,
+          pageToken,
+          showDeleted: true,
+        });
+        allEvents.push(...(pageResponse.data.items || []).map(mapGoogleEventToInternal));
+        pageToken = pageResponse.data.nextPageToken || undefined;
+        nextSyncToken = pageResponse.data.nextSyncToken || nextSyncToken;
+      }
+    }
+  } catch (error: unknown) {
+    // SyncToken expired or invalid - fall back to full sync
+    const googleError = error as { code?: number };
+    if (googleError.code === 410) {
+      console.log('Sync token expired, performing full sync');
+      syncToken = null; // Force full sync below
+    } else {
+      throw error;
+    }
+  }
+
+  // Full sync if no syncToken or it was invalid
+  if (!syncToken) {
+    isFullSync = true;
+
+    // Get events from 30 days ago to 90 days ahead
+    const timeMin = new Date();
+    timeMin.setDate(timeMin.getDate() - 30);
+    const timeMax = new Date();
+    timeMax.setDate(timeMax.getDate() + 90);
+
+    const response = await calendar.events.list({
+      calendarId,
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 2500,
+    });
+
+    allEvents = (response.data.items || []).map(mapGoogleEventToInternal);
+    nextSyncToken = response.data.nextSyncToken || undefined;
+
+    // Handle pagination
+    pageToken = response.data.nextPageToken || undefined;
+    while (pageToken) {
+      const pageResponse = await calendar.events.list({
+        calendarId,
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+        pageToken,
+      });
+      allEvents.push(...(pageResponse.data.items || []).map(mapGoogleEventToInternal));
+      pageToken = pageResponse.data.nextPageToken || undefined;
+      nextSyncToken = pageResponse.data.nextSyncToken || nextSyncToken;
+    }
+  }
+
+  if (!nextSyncToken) {
+    throw new Error('No sync token returned from Google Calendar API');
+  }
+
+  return {
+    events: allEvents,
+    nextSyncToken,
+    isFullSync,
+  };
+}
+
+/**
+ * Map Google Calendar API event to our internal format
+ */
+function mapGoogleEventToInternal(event: {
+  id?: string | null;
+  summary?: string | null;
+  description?: string | null;
+  location?: string | null;
+  start?: { dateTime?: string | null; date?: string | null; timeZone?: string | null } | null;
+  end?: { dateTime?: string | null; date?: string | null; timeZone?: string | null } | null;
+  colorId?: string | null;
+  status?: string | null;
+}): GoogleCalendarEvent & { status?: string } {
+  return {
+    id: event.id || '',
+    summary: event.summary || undefined,
+    description: event.description || undefined,
+    location: event.location || undefined,
+    start: event.start
+      ? {
+          dateTime: event.start.dateTime || undefined,
+          date: event.start.date || undefined,
+          timeZone: event.start.timeZone || undefined,
+        }
+      : undefined,
+    end: event.end
+      ? {
+          dateTime: event.end.dateTime || undefined,
+          date: event.end.date || undefined,
+          timeZone: event.end.timeZone || undefined,
+        }
+      : undefined,
+    colorId: event.colorId || undefined,
+    status: event.status || undefined,
+  };
 }

@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/db';
 import { fetchGoogleCalendarEvents, getWeekBoundaries } from '@/lib/calendar/google';
 import { sendSMS, generateSMSMessage, type InsightType } from '@/lib/sms';
+import { sendInsightPush } from '@/lib/notifications/push/send';
 import {
   detectCalendarGaps,
   detectConflicts,
@@ -177,11 +178,15 @@ export async function analyzeHousehold(householdId: string): Promise<AnalysisRes
         },
       });
 
-      // Send SMS to target user
+      // Send notifications to target user
       const targetUser = await prisma.user.findUnique({
         where: { id: insight.targetUserId },
       });
 
+      let smsSent = false;
+      let pushSent = false;
+
+      // Try SMS first (if user has verified phone)
       if (targetUser?.phoneNumber && targetUser.phoneVerified) {
         const sendResult = await sendSMS({
           to: targetUser.phoneNumber,
@@ -189,19 +194,38 @@ export async function analyzeHousehold(householdId: string): Promise<AnalysisRes
         });
 
         if (sendResult.success) {
-          await prisma.insight.update({
-            where: { id: dbInsight.id },
-            data: {
-              status: 'sent',
-              sentAt: new Date(),
-            },
-          });
+          smsSent = true;
           result.insightsSent++;
         } else {
           result.errors.push(`Failed to send SMS to ${targetUser.email}: ${sendResult.error}`);
         }
-      } else {
-        console.log('User has no verified phone number:', insight.targetUserId);
+      }
+
+      // Also send push notification (works even without verified phone)
+      if (targetUser) {
+        const pushResult = await sendInsightPush({
+          toUserId: targetUser.id,
+          insightType: insight.type,
+          title: insight.title,
+          body: insight.description,
+          insightId: dbInsight.id,
+        });
+
+        if (pushResult.success) {
+          pushSent = true;
+          console.log(`Push notification sent for insight ${dbInsight.id}`);
+        }
+      }
+
+      // Mark insight as sent if either channel succeeded
+      if (smsSent || pushSent) {
+        await prisma.insight.update({
+          where: { id: dbInsight.id },
+          data: {
+            status: 'sent',
+            sentAt: new Date(),
+          },
+        });
       }
     }
 

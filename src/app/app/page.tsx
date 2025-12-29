@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import Dashboard from '@/components/dashboard/Dashboard';
 
 export const dynamic = 'force-dynamic';
 
 async function getOnboardingStatus() {
   const session = await auth();
   if (!session?.user?.id) {
-    return { needsOnboarding: false };
+    return { needsOnboarding: false, authenticated: false };
   }
 
   const user = await prisma.user.findUnique({
@@ -21,21 +22,26 @@ async function getOnboardingStatus() {
     },
   });
 
-  // User needs onboarding if they don't have connected calendars or verified phone
+  // User needs onboarding if they don't have connected calendars
   const hasConnectedCalendars = (user?.familyMember?.calendars?.length ?? 0) > 0;
-  const hasVerifiedPhone = user?.phoneVerified ?? false;
 
   return {
-    needsOnboarding: !hasConnectedCalendars || !hasVerifiedPhone,
+    needsOnboarding: !hasConnectedCalendars,
+    authenticated: true,
   };
 }
 
 export default async function AppIndex() {
-  const { needsOnboarding } = await getOnboardingStatus();
+  const { needsOnboarding, authenticated } = await getOnboardingStatus();
+
+  if (!authenticated) {
+    redirect('/login');
+  }
 
   if (needsOnboarding) {
     redirect('/app/onboarding');
   }
 
-  redirect('/app/ritual');
+  // Show dashboard instead of redirecting
+  return <Dashboard />;
 }

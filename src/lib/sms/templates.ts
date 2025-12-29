@@ -11,7 +11,17 @@ export type InsightType =
   | 'coverage_gap'
   | 'load_imbalance'
   | 'prep_reminder'
-  | 'partner_update';
+  | 'partner_update'
+  // Email-based insight types
+  | 'school_notice'
+  | 'medical_reminder'
+  | 'activity_update'
+  | 'logistics_alert'
+  | 'social_event'
+  | 'billing_reminder'
+  | 'email_response_needed'
+  | 'deadline'
+  | 'other';
 
 export interface TemplateData {
   eventName?: string;
@@ -21,6 +31,16 @@ export interface TemplateData {
   childName?: string;
   count?: number;
   action?: string;
+  // Email-related fields
+  emailSubject?: string;
+  from?: string;
+  summary?: string;
+  dueDate?: string;
+  source?: string;
+  deadline?: string;
+  description?: string;
+  isRecurring?: boolean;
+  daysUntil?: number;
 }
 
 export interface SMSTemplate {

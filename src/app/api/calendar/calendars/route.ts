@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { fetchGoogleCalendars } from '@/lib/calendar/google';
+import { createWebhookChannel, removeWebhookChannel } from '@/lib/calendar/webhook';
 
 // GET: List all connected calendars and available Google calendars
 export async function GET() {
@@ -154,6 +155,17 @@ export async function POST(request: NextRequest) {
             included: included !== false,
           },
         });
+
+        // Register webhook channel for real-time notifications
+        // Do this async (don't block calendar connection)
+        createWebhookChannel(newCalendar.id).then(result => {
+          if (result.success) {
+            console.log(`Webhook channel created for calendar ${newCalendar.id}: ${result.channelId}`);
+          } else {
+            console.error(`Failed to create webhook channel for calendar ${newCalendar.id}: ${result.error}`);
+          }
+        });
+
         return NextResponse.json({ success: true, calendar: newCalendar });
 
       case 'toggle':
@@ -179,6 +191,9 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+
+        // Remove webhook channel first (before deleting calendar)
+        await removeWebhookChannel(calendarId);
 
         await prisma.connectedCalendar.delete({
           where: { id: calendarId },

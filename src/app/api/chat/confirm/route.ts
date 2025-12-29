@@ -4,6 +4,53 @@ import { prisma } from '@/lib/db';
 import { getWeekKey } from '@/lib/ritual/weekKey';
 import { sendEmail } from '@/lib/notifications/email/client';
 import { UserEmail } from '@/lib/notifications/email/templates/user-email';
+import { createGoogleCalendarEvent } from '@/lib/calendar/write';
+import { recordOutcome, recordFeedback } from '@/lib/agent';
+
+/**
+ * Parse day name and time into a Date object
+ */
+function parseEventDateTime(day: string, time: string): Date {
+  const now = new Date();
+  let targetDate: Date;
+
+  // Check if day is already ISO format
+  if (/^\d{4}-\d{2}-\d{2}/.test(day)) {
+    targetDate = new Date(day);
+  } else {
+    // Day name like "Monday", "Tuesday", etc.
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const targetDayIndex = dayNames.findIndex((d) => d === day.toLowerCase());
+
+    if (targetDayIndex === -1) {
+      // Default to today if parsing fails
+      targetDate = new Date(now);
+    } else {
+      const currentDay = now.getDay();
+      let daysUntilTarget = targetDayIndex - currentDay;
+      if (daysUntilTarget <= 0) daysUntilTarget += 7; // Next week if today or past
+      targetDate = new Date(now);
+      targetDate.setDate(now.getDate() + daysUntilTarget);
+    }
+  }
+
+  // Parse time (handles "14:00" or "2:00 PM")
+  const timeMatch = time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    const meridiem = timeMatch[3];
+
+    if (meridiem) {
+      if (meridiem.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+      if (meridiem.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    }
+
+    targetDate.setHours(hours, minutes, 0, 0);
+  }
+
+  return targetDate;
+}
 
 export async function POST(req: Request) {
   try {
@@ -63,6 +110,9 @@ export async function POST(req: Request) {
           },
         });
 
+        // Record success for agent learning
+        await recordOutcome(user.householdId, 'createTask', 'success');
+
         return NextResponse.json({
           success: true,
           task,
@@ -71,14 +121,67 @@ export async function POST(req: Request) {
       }
 
       case 'createEvent': {
-        // For now, events are placeholder - would integrate with Google Calendar
-        const { title, day, time, parent } = data;
+        const { title, day, time, duration, description } = data;
 
-        return NextResponse.json({
-          success: true,
-          message: `Event "${title}" would be created for ${day} at ${time}. Calendar integration coming soon!`,
-          event: { title, day, time, parent },
+        // Get user's primary calendar
+        const familyMember = await prisma.familyMember.findUnique({
+          where: { userId: session.user.id },
+          include: { calendars: { where: { included: true }, take: 1 } },
         });
+
+        if (!familyMember?.calendars[0]) {
+          return NextResponse.json(
+            { error: 'No calendar connected. Please connect a calendar in settings.' },
+            { status: 400 }
+          );
+        }
+
+        // Parse the date and time
+        const startDate = parseEventDateTime(day, time);
+        const durationMinutes = duration || 60;
+        const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
+
+        try {
+          const eventId = await createGoogleCalendarEvent(
+            session.user.id,
+            familyMember.calendars[0].googleCalendarId,
+            {
+              summary: title,
+              description: description || 'Created via FamilyOS chat',
+              start: startDate,
+              end: endDate,
+            }
+          );
+
+          // Format the date nicely for the response
+          const formattedDate = startDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'short',
+            day: 'numeric',
+          });
+          const formattedTime = startDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+          });
+
+          // Record success for agent learning
+          await recordOutcome(user.householdId, 'createEvent', 'success');
+
+          return NextResponse.json({
+            success: true,
+            message: `Event "${title}" created for ${formattedDate} at ${formattedTime}`,
+            eventId,
+            event: { title, day, time, duration: durationMinutes },
+          });
+        } catch (error) {
+          console.error('Failed to create calendar event:', error);
+          // Record failure for agent learning
+          await recordOutcome(user.householdId, 'createEvent', 'failure');
+          return NextResponse.json(
+            { error: 'Failed to create calendar event. Please try again.' },
+            { status: 500 }
+          );
+        }
       }
 
       case 'notifyPartner': {
@@ -124,6 +227,9 @@ export async function POST(req: Request) {
             },
           },
         });
+
+        // Record success for agent learning
+        await recordOutcome(user.householdId, 'notifyPartner', 'success');
 
         return NextResponse.json({
           success: true,
@@ -179,6 +285,9 @@ export async function POST(req: Request) {
           },
         });
 
+        // Record success for agent learning
+        await recordOutcome(user.householdId, 'swapEvents', 'success');
+
         return NextResponse.json({
           success: true,
           message: `Swap proposal sent to ${partner.user?.name || 'your partner'}: ${day1} ↔ ${day2}`,
@@ -213,6 +322,8 @@ export async function POST(req: Request) {
         });
 
         if (!result.success) {
+          // Record failure for agent learning
+          await recordOutcome(user.householdId, 'draftEmail', 'failure');
           return NextResponse.json({
             error: result.error || 'Failed to send email',
           }, { status: 500 });
@@ -232,6 +343,9 @@ export async function POST(req: Request) {
             },
           },
         });
+
+        // Record success for agent learning
+        await recordOutcome(user.householdId, 'draftEmail', 'success');
 
         return NextResponse.json({
           success: true,

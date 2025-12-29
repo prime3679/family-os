@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth';
 import { getWeekKey } from '@/lib/ritual/weekKey';
 import { prisma } from '@/lib/db';
 import { z } from 'zod';
+import { getAgentContext } from '@/lib/agent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -82,6 +83,32 @@ export async function POST(req: Request) {
       },
     });
 
+    // Fetch agent context (memory, patterns, pending actions)
+    let agentMemory: FamilyContext['agentMemory'] = undefined;
+    if (user?.householdId) {
+      try {
+        const agentCtx = await getAgentContext(user.householdId, session.user.id);
+        agentMemory = {
+          preferences: agentCtx.preferences.map(p => ({
+            key: p.key,
+            value: p.value
+          })),
+          patterns: agentCtx.patterns.map(p => ({
+            key: p.key,
+            description: (p.value as { description?: string })?.description || p.key,
+            confidence: p.confidence,
+          })),
+          pendingActions: agentCtx.pendingActions.map(a => ({
+            actionType: a.actionType,
+            description: JSON.stringify(a.actionData),
+          })),
+        };
+      } catch (error) {
+        console.error('Failed to fetch agent context:', error);
+        // Continue without agent context
+      }
+    }
+
     // Build context with real data
     const context: FamilyContext = {
       today: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
@@ -91,6 +118,7 @@ export async function POST(req: Request) {
       events: [], // Will be populated from calendar integration
       conflicts: [],
       tasks: user?.household?.tasks.map(t => ({ title: t.title, status: t.status })) || [],
+      agentMemory,
     };
 
     // Define tools using the AI SDK tool() helper

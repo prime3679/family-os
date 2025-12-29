@@ -7,6 +7,12 @@ export interface FamilyContext {
   events: Array<{ day: string; time: string; title: string; parent: string }>;
   conflicts: Array<{ day: string; description: string }>;
   tasks: Array<{ title: string; status: string }>;
+  // Agent memory context
+  agentMemory?: {
+    preferences: Array<{ key: string; value: unknown }>;
+    patterns: Array<{ key: string; description: string; confidence: number }>;
+    pendingActions: Array<{ actionType: string; description: string }>;
+  };
 }
 
 export function buildChatSystemPrompt(context: FamilyContext): string {
@@ -44,5 +50,39 @@ CONVERSATION STYLE:
 - Be warm but efficient - parents are busy
 - Confirm actions before executing with tool calls
 - If something is unclear, ask a clarifying question
-- Remember context from earlier in the conversation`;
+- Remember context from earlier in the conversation
+
+${context.agentMemory ? formatAgentMemory(context.agentMemory) : ''}`;
+}
+
+function formatAgentMemory(memory: NonNullable<FamilyContext['agentMemory']>): string {
+  const parts: string[] = [];
+
+  // Family preferences
+  if (memory.preferences.length > 0) {
+    parts.push('\nFAMILY PREFERENCES (learned from past interactions):');
+    for (const pref of memory.preferences) {
+      const value = typeof pref.value === 'object' ? JSON.stringify(pref.value) : String(pref.value);
+      parts.push(`- ${pref.key}: ${value}`);
+    }
+  }
+
+  // Observed patterns
+  if (memory.patterns.length > 0) {
+    parts.push('\nOBSERVED PATTERNS:');
+    for (const pattern of memory.patterns) {
+      const confidence = Math.round(pattern.confidence * 100);
+      parts.push(`- ${pattern.description} (${confidence}% confident)`);
+    }
+  }
+
+  // Pending actions awaiting approval
+  if (memory.pendingActions.length > 0) {
+    parts.push('\nPENDING ACTIONS (awaiting user approval):');
+    for (const action of memory.pendingActions) {
+      parts.push(`- ${action.actionType}: ${action.description}`);
+    }
+  }
+
+  return parts.join('\n');
 }

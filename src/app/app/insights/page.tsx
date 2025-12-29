@@ -9,33 +9,39 @@ export default function InsightsPage() {
   const { showToast } = useToast();
 
   const handleAction = async (insightId: string, action: string) => {
-    // Handle quick actions - these could trigger specific workflows
-    switch (action) {
-      case 'add_to_calendar':
-        showToast({ type: 'success', message: 'Calendar integration coming soon!' });
-        break;
-      case 'notify_partner':
-        showToast({ type: 'success', message: 'Opening chat to notify partner...' });
-        // Could redirect to chat with pre-filled message
-        break;
-      case 'view_conflict':
-      case 'view_schedule':
-        showToast({ type: 'success', message: 'Opening week view...' });
-        // Could redirect to week view
-        break;
-      case 'create_task':
-        showToast({ type: 'success', message: 'Opening task creator...' });
-        // Could open task creation modal
-        break;
-      case 'suggest_swap':
-        showToast({ type: 'success', message: 'Opening chat to suggest swap...' });
-        // Could redirect to chat with pre-filled message
-        break;
-      case 'mark_done':
-        await resolveInsight(insightId, 'Marked as done');
-        break;
-      default:
-        console.log('Unknown action:', action);
+    // Handle navigation actions (no API call needed)
+    if (action === 'view_conflict' || action === 'view_schedule') {
+      window.location.href = '/app/week';
+      return;
+    }
+
+    if (action === 'suggest_swap') {
+      window.location.href = '/app/chat?message=I%20need%20help%20with%20schedule%20swapping';
+      return;
+    }
+
+    // Call the action API for actions that need backend processing
+    try {
+      const response = await fetch(`/api/insights/${insightId}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        showToast({ type: 'error', message: result.error || 'Action failed' });
+        return;
+      }
+
+      showToast({ type: 'success', message: result.message || 'Done!' });
+
+      // Refetch insights to update the list
+      refetch();
+    } catch (error) {
+      console.error('Action error:', error);
+      showToast({ type: 'error', message: 'Something went wrong' });
     }
   };
 
