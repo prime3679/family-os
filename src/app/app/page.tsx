@@ -35,7 +35,7 @@ export default async function AppIndex() {
   const { needsOnboarding, authenticated } = await getOnboardingStatus();
 
   if (!authenticated) {
-    redirect('/login');
+    redirect('/api/auth/signin');
   }
 
   if (needsOnboarding) {
