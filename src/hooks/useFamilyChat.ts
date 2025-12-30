@@ -158,8 +158,8 @@ export function useFamilyChat() {
           const chunk = decoder.decode(value);
 
           // Check for tool call markers in the stream
-          // Format: [TOOL:toolName:{"arg":"value"}]
-          const toolMatch = chunk.match(/\[TOOL:(\w+):(\{[^}]+\})\]/);
+          // Format: [TOOL:toolName:{"arg":"value"}] or [TOOL:toolName:{}]
+          const toolMatch = chunk.match(/\[TOOL:(\w+):(\{[^}]*\})\]/);
           if (toolMatch) {
             const [fullMatch, toolName, argsStr] = toolMatch;
             try {
